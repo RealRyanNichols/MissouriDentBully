@@ -103,6 +103,52 @@ function initTabs(){
   });
 }
 
+// ─── Warning Polygons on Map ─────────────────────────
+var warningPolygons=[];
+function loadWarningPolygons(){
+  // Fetch active warnings with geometry from NWS
+  fetch('https://api.weather.gov/alerts/active?status=actual&message_type=alert&event=Severe%20Thunderstorm%20Warning,Tornado%20Warning',{
+    headers:{'User-Agent':'HailStrikeOps/1.0','Accept':'application/geo+json'}
+  }).then(function(r){return r.json()}).then(function(data){
+    // Clear old polygons
+    warningPolygons.forEach(function(p){map.removeLayer(p)});
+    warningPolygons=[];
+
+    (data.features||[]).forEach(function(f){
+      if(!f.geometry||!f.geometry.coordinates) return;
+      var evt=(f.properties.event||'').toLowerCase();
+      var isTornado=evt.includes('tornado');
+      var color=isTornado?'#ff0000':'#ffcc00';
+      var fillColor=isTornado?'rgba(255,0,0,0.2)':'rgba(255,204,0,0.15)';
+      var weight=isTornado?3:2;
+
+      try{
+        // GeoJSON coordinates are [lon,lat], Leaflet needs [lat,lon]
+        var coords=f.geometry.coordinates;
+        if(f.geometry.type==='Polygon'){
+          var latLngs=coords[0].map(function(c){return[c[1],c[0]]});
+          var poly=L.polygon(latLngs,{color:color,fillColor:fillColor,fillOpacity:1,weight:weight,dashArray:isTornado?'':'5,5'});
+          poly.bindPopup('<b style="color:'+color+'">'+f.properties.event+'</b><br>'+
+            '<span style="color:#999">'+(f.properties.areaDesc||'')+'</span><br>'+
+            '<span style="font-size:11px;color:#888">'+(f.properties.headline||'').substring(0,200)+'</span>');
+          poly.addTo(map);
+          warningPolygons.push(poly);
+        }
+        if(f.geometry.type==='MultiPolygon'){
+          coords.forEach(function(polyCoords){
+            var latLngs=polyCoords[0].map(function(c){return[c[1],c[0]]});
+            var poly=L.polygon(latLngs,{color:color,fillColor:fillColor,fillOpacity:1,weight:weight,dashArray:isTornado?'':'5,5'});
+            poly.bindPopup('<b style="color:'+color+'">'+f.properties.event+'</b><br>'+
+              '<span style="color:#999">'+(f.properties.areaDesc||'')+'</span>');
+            poly.addTo(map);
+            warningPolygons.push(poly);
+          });
+        }
+      }catch(e){console.error('Polygon render error:',e)}
+    });
+  }).catch(function(e){console.error('Warning polygons fetch failed:',e)});
+}
+
 // ─── Load Storm Data ──────────────────────────────────
 function loadStorms(){
   var state=document.getElementById('stateFilter').value;
@@ -125,6 +171,7 @@ function loadStorms(){
     renderReports(allReports);
     renderScout(scoutZones,data.adTargeting);
     renderAlerts(allAlerts);
+    loadWarningPolygons();
   }).catch(function(e){
     console.error(e);
     document.getElementById('statusText').textContent='Error — retrying...';
