@@ -28,8 +28,8 @@ document.addEventListener('DOMContentLoaded',function(){
 
 // ─── State ────────────────────────────────────────────
 var map,allReports=[],allAlerts=[],scoutZones=[],leads=[];
-var layers={ref:null,vel:null,pre:null,mesh:null};
-var layerState={ref:true,vel:false,pre:false,mesh:false};
+var layers={ref:null,mesh:null};
+var layerState={ref:true,mesh:false};
 var markers=[];
 var demoCache={}; // demographics cache by state
 
@@ -58,40 +58,35 @@ function initMap(){
     maxZoom:19
   }).addTo(map);
 
-  // Radar layers
-  layers.ref=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q.cgi',{layers:'nexrad-n0q-900913',transparent:true,format:'image/png',opacity:0.55}).addTo(map);
-  layers.vel=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0u.cgi',{layers:'nexrad-n0u-900913',transparent:true,format:'image/png',opacity:0.35});
-  layers.pre=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/iowa/mrms_p1h.cgi',{layers:'mrms_p1h',transparent:true,format:'image/png',opacity:0.3});
+  // Radar — NEXRAD base reflectivity (verified working)
+  layers.ref=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q.cgi',{
+    layers:'nexrad-n0q-900913',transparent:true,format:'image/png',opacity:0.55
+  }).addTo(map);
 
-  // MESH layer — Maximum Estimated Size of Hail (this is the swath data)
-  layers.mesh=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/iowa/mrms_mesh.cgi',{layers:'mrms_mesh',transparent:true,format:'image/png',opacity:0.6});
+  // MESH — Maximum Estimated Size of Hail via MRMS composite
+  // Using NOAA's RIDGE2 radar overlay which includes hail detection products
+  layers.mesh=L.tileLayer.wms('https://opengeo.ncep.noaa.gov/geoserver/conus/conus_cref_qcd/ows',{
+    service:'WMS',version:'1.1.1',layers:'conus_cref_qcd',transparent:true,format:'image/png',opacity:0.5,
+    crs:L.CRS.EPSG4326
+  });
 }
 
 window.toggleLayer=function(id){
+  if(!layers[id]){console.error('Layer not found:',id);return}
   try{
     layerState[id]=!layerState[id];
     if(layerState[id]){
-      if(!map.hasLayer(layers[id])) layers[id].addTo(map);
+      layers[id].addTo(map);
     } else {
-      if(map.hasLayer(layers[id])) map.removeLayer(layers[id]);
+      map.removeLayer(layers[id]);
     }
   }catch(e){console.error('Toggle layer error:',e)}
-  var btnId='btn'+id.charAt(0).toUpperCase()+id.slice(1);
-  var btn=document.getElementById(btnId);
+  // Update button state
+  var btnMap={ref:'btnRef',mesh:'btnMesh'};
+  var btn=document.getElementById(btnMap[id]);
   if(btn){
-    if(layerState[id]){btn.classList.add('active');btn.textContent=btn.textContent.replace(' OFF',' ON').replace(/^(Radar|Velocity|Precip)$/,'$1')}
-    else{btn.classList.remove('active')}
+    btn.classList.toggle('active',layerState[id]);
   }
-};
-window.fitAllMarkers=function(){
-  try{
-    if(markers.length>0){
-      var g=L.featureGroup(markers);
-      map.fitBounds(g.getBounds().pad(0.15));
-    } else {
-      map.setView([38.5,-92.5],7); // Default to Missouri
-    }
-  }catch(e){console.error('Fit markers error:',e)}
 };
 
 // ─── Tabs ─────────────────────────────────────────────
