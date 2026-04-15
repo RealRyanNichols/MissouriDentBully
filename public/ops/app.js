@@ -302,13 +302,21 @@ function renderMap(reports){
 function renderReports(reports){
   var el=document.getElementById('reportsList');
   if(!reports.length){el.innerHTML='<div class="data-card"><div class="card-title" style="color:var(--muted)">No hail reports for this filter</div></div>';return}
-  var sorted=reports.slice().sort(function(a,b){return b.size-a.size});
+  // Prioritize EAX (Kansas City NWS — Jason's territory) reports first, then by size
+  var sorted=reports.slice().sort(function(a,b){
+    var aHome=isHomeTerritory(a.comments)?1:0;
+    var bHome=isHomeTerritory(b.comments)?1:0;
+    if(aHome!==bHome) return bHome-aHome; // Home territory first
+    return b.size-a.size; // Then by size
+  });
   el.innerHTML=sorted.slice(0,50).map(function(r){
     var bc=r.size>=2.75?'badge-hotred':r.size>=1.75?'badge-red':r.size>=1?'badge-amber':'badge-cyan';
     return '<div class="data-card" onclick="flyTo('+r.lat+','+r.lon+')">'+
       '<div class="card-head"><span class="card-title">'+r.location+', '+r.state+'</span><span class="card-badge '+bc+'">'+r.size+'" '+r.sizeLabel+'</span></div>'+
       '<div class="card-meta"><span>'+r.county+' Co.</span><span>'+utcToCentral(r.time)+' CT '+(r.day==='today'?'Today':'Yest.')+'</span><span>'+r.damageLevel+'</span>'+
       (isMediaVerified(r.comments)?'<span class="card-badge badge-green" style="font-family:var(--font);font-size:9px">MEDIA VERIFIED</span>':'')+
+      (isHomeTerritory(r.comments)?'<span class="card-badge badge-red" style="font-family:var(--font);font-size:9px">HOME ZONE</span>':'')+
+      (getWFO(r.comments)?'<span style="color:#666;font-size:10px">NWS: '+getWFO(r.comments)+'</span>':'')+
       '</div>'+
       (r.comments?'<div class="card-meta" style="margin-top:4px"><span style="color:#888">'+r.comments+'</span></div>':'')+
     '</div>';
@@ -763,6 +771,19 @@ window.addDealerFromBiz=function(name,phone,city,state){
   map.closePopup();
   alert(name+' added to Dealership leads!');
 };
+
+function isHomeTerritory(comments){
+  if(!comments) return false;
+  var c=comments.toUpperCase();
+  // EAX=Kansas City, LSX=St Louis, SGF=Springfield — all Missouri NWS offices
+  return c.indexOf('(EAX)')!==-1||c.indexOf('(LSX)')!==-1||c.indexOf('(SGF)')!==-1;
+}
+
+function getWFO(comments){
+  if(!comments) return '';
+  var match=comments.match(/\(([A-Z]{3})\)\s*$/);
+  return match?match[1]:'';
+}
 
 function isMediaVerified(comments){
   if(!comments) return false;
