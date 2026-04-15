@@ -90,6 +90,15 @@
 <button class="ctrl-btn" id="btnPre" onclick="toggleLayer('pre')">Precip</button>
 <button class="ctrl-btn" onclick="fitAllMarkers()">Fit All</button>
 </div>
+
+<!-- Date Picker for Historical Data -->
+<div class="section-head">Storm Date</div>
+<div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+<input type="date" id="historyDate" class="full-select" style="flex:1" value="">
+<button class="ctrl-btn" onclick="loadHistoricalData()">Load Date</button>
+<button class="ctrl-btn" onclick="loadToday()">Today</button>
+</div>
+
 <div class="section-head">Recent Hail Reports</div>
 <div id="reportsList" class="card-list">Loading...</div>
 </div>

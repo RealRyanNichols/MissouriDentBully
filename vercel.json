@@ -9,6 +9,8 @@
     { "source": "/api/demographics", "destination": "/api/demographics" },
     { "source": "/api/outreach", "destination": "/api/outreach" },
     { "source": "/api/scout", "destination": "/api/scout" },
-    { "source": "/api/facebook", "destination": "/api/facebook" }
+    { "source": "/api/facebook", "destination": "/api/facebook" },
+    { "source": "/api/history", "destination": "/api/history" },
+    { "source": "/api/businesses", "destination": "/api/businesses" }
   ]
 }

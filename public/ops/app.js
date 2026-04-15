@@ -320,7 +320,7 @@ function renderScout(zones,adData){
       '<div class="card-head"><span class="card-title">#'+(i+1)+' '+z.county+' County, '+z.state+'</span><span class="card-badge badge-red">Score: '+z.opportunityScore+'</span></div>'+
       '<div class="card-meta"><span>Max: <b>'+z.maxSize+'"</b></span><span>Avg: <b>'+z.avgSize+'"</b></span><span><b>'+z.reportCount+'</b> reports</span><span>'+z.damageLevel+'</span></div>'+
       '<div class="score-bar"><div class="score-fill" style="width:'+pct+'%;background:'+color+'"></div></div>'+
-      '<div class="card-actions"><button class="card-btn red" onclick="event.stopPropagation();addLeadFromZone(\''+z.county+'\',\''+z.state+'\')">+ Add Lead</button><button class="card-btn" onclick="event.stopPropagation();copyAdTarget(\''+z.county+'\',\''+z.state+'\','+z.lat+','+z.lon+','+z.maxSize+')">Copy Ad Target</button></div>'+
+      '<div class="card-actions"><button class="card-btn red" onclick="event.stopPropagation();addLeadFromZone(\''+z.county+'\',\''+z.state+'\')">+ Add Lead</button><button class="card-btn" onclick="event.stopPropagation();findBusinesses('+z.lat+','+z.lon+')">Find Shops</button><button class="card-btn" onclick="event.stopPropagation();copyAdTarget(\''+z.county+'\',\''+z.state+'\','+z.lat+','+z.lon+','+z.maxSize+')">Copy Ad Target</button></div>'+
     '</div>';
   }).join('');
 
@@ -686,6 +686,77 @@ window.shareNative=function(text){
   if(navigator.share){navigator.share({title:'HailStrike Ops',text:text,url:window.location.href})}
   else{copyText(text+' '+window.location.href)}
 };
+// ─── Historical Data ──────────────────────────────────
+window.loadHistoricalData=function(){
+  var dateInput=document.getElementById('historyDate').value;
+  if(!dateInput){alert('Pick a date first');return}
+  // Convert YYYY-MM-DD to YYMMDD
+  var parts=dateInput.split('-');
+  var yymmdd=parts[0].substring(2)+parts[1]+parts[2];
+  var state=document.getElementById('stateFilter').value;
+
+  document.getElementById('statusText').textContent='Loading '+dateInput+'...';
+  fetch('/api/history?date='+yymmdd+(state?'&state='+state:'')).then(function(r){return r.json()}).then(function(data){
+    if(!data.reports||!data.reports.length){
+      alert('No hail reports found for '+dateInput+(state?' in '+state:''));
+      return;
+    }
+    allReports=data.reports;
+    document.getElementById('sReports').textContent=data.summary.totalReports;
+    document.getElementById('sMaxSize').textContent=data.summary.maxSize?data.summary.maxSize.toFixed(1)+'"':'0';
+    document.getElementById('sZones').textContent=data.summary.countiesHit.length;
+    document.getElementById('statusText').textContent='Showing '+dateInput+' — '+data.summary.totalReports+' reports';
+    renderReports(allReports);
+    renderMap(allReports);
+  }).catch(function(e){
+    alert('Failed to load data for '+dateInput);
+    console.error(e);
+  });
+};
+window.loadToday=function(){
+  document.getElementById('historyDate').value='';
+  loadStorms();
+};
+
+// ─── Business Finder ──────────────────────────────────
+window.findBusinesses=function(lat,lon){
+  document.getElementById('statusText').textContent='Finding businesses...';
+  fetch('/api/businesses?lat='+lat+'&lon='+lon+'&radius=15').then(function(r){return r.json()}).then(function(data){
+    var all=data.allBusinesses||[];
+    if(!all.length){alert('No auto businesses found within 15 miles. Try a larger area.');return}
+
+    // Show results in an alert for now — will build proper panel later
+    var msg='BUSINESSES IN HAIL ZONE ('+data.summary.totalFound+' found):\n\n';
+    msg+='DEALERSHIPS ('+data.summary.dealerships+'):\n';
+    (data.dealerships||[]).forEach(function(b){msg+='  '+b.name+(b.phone?' — '+b.phone:'')+' ('+b.distance+')\n'});
+    msg+='\nBODY SHOPS ('+data.summary.bodyShops+'):\n';
+    (data.bodyShops||[]).forEach(function(b){msg+='  '+b.name+(b.phone?' — '+b.phone:'')+' ('+b.distance+')\n'});
+    msg+='\nAUTO SHOPS ('+data.summary.autoShops+'):\n';
+    (data.autoShops||[]).forEach(function(b){msg+='  '+b.name+(b.phone?' — '+b.phone:'')+' ('+b.distance+')\n'});
+
+    alert(msg);
+
+    // Also add markers to map
+    all.forEach(function(b){
+      var m=L.marker([b.lat,b.lon]).addTo(map);
+      m.bindPopup('<b>'+b.name+'</b><br>'+b.category+'<br>'+(b.address?b.address+'<br>':'')+(b.phone?'<a href="tel:'+b.phone+'">'+b.phone+'</a><br>':'')+(b.website?'<a href="'+b.website+'" target="_blank">Website</a><br>':'')+'<br><button class="card-btn red" onclick="addDealerFromBiz(\''+b.name.replace(/'/g,'')+'\',\''+b.phone+'\',\''+b.city+'\',\''+b.state+'\')">+ Add as Lead</button>');
+      markers.push(m);
+    });
+    document.getElementById('statusText').textContent='Showing '+all.length+' businesses';
+  }).catch(function(e){
+    alert('Business search failed');
+    console.error(e);
+  });
+};
+
+window.addDealerFromBiz=function(name,phone,city,state){
+  dealershipLeads.unshift({type:'dealership',dealerName:name,dealerPhone:phone,dealerCity:city,dealerState:state,dealerType:'found-in-zone',status:'prospecting',createdAt:new Date().toISOString()});
+  localStorage.setItem('hs-dealer-leads',JSON.stringify(dealershipLeads));
+  renderAllLeads();
+  map.closePopup();
+  alert(name+' added to Dealership leads!');
+};
+
 function debounce(fn,ms){var t;return function(){clearTimeout(t);t=setTimeout(fn,ms)}}
 
 // Convert SPC UTC time (e.g. "2220") to Central Time
