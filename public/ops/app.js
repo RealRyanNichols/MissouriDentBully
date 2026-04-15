@@ -94,197 +94,127 @@ window.toggleLayer=function(id){
   if(btn) btn.classList.toggle('active',layerState[id]);
 };
 
-// ─── HailStrike Swath Engine ──────────────────────────
-// Custom swath renderer — paints storm paths from spotter reports
+// ─── HailStrike Swath Engine v3 ───────────────────────
+// Simple: transparent painted area showing where hail fell
 function loadMESHData(){
   meshSwathLayers.forEach(function(l){map.removeLayer(l)});
   meshSwathLayers=[];
   if(!allReports.length){
-    document.getElementById('statusText').textContent='No reports to build swaths from';
+    document.getElementById('statusText').textContent='No reports to build swaths';
     return;
   }
-  document.getElementById('statusText').textContent='Building hail swaths...';
 
-  // Step 1: Cluster reports into storm tracks
-  var tracks=clusterStormTracks(allReports);
-
-  // Step 2: Draw each track as a painted swath
-  tracks.forEach(function(track){
-    drawStormSwath(track);
-  });
-
-  document.getElementById('statusText').textContent='Showing '+tracks.length+' storm swaths from '+allReports.length+' reports';
+  // Group reports into storm tracks
+  var tracks=buildTracks(allReports);
+  tracks.forEach(function(t){paintSwath(t)});
+  document.getElementById('statusText').textContent=tracks.length+' hail swath'+(tracks.length!==1?'s':'')+' from '+allReports.length+' reports';
 }
 
-// Cluster nearby reports into storm tracks based on proximity + time
-function clusterStormTracks(reports){
-  var sorted=reports.slice().sort(function(a,b){return(a.time||'').localeCompare(b.time||'')});
-  var used=new Array(sorted.length).fill(false);
+// Group nearby reports into storm tracks
+function buildTracks(reports){
+  var pts=reports.slice().sort(function(a,b){return(a.time||'').localeCompare(b.time||'')});
+  var used=[];for(var i=0;i<pts.length;i++)used[i]=false;
   var tracks=[];
 
-  for(var i=0;i<sorted.length;i++){
-    if(used[i]) continue;
-    var track=[sorted[i]];
-    used[i]=true;
-
-    // Find all reports within 80km and 3 hours of any report in this track
+  for(var i=0;i<pts.length;i++){
+    if(used[i])continue;
+    var track=[pts[i]];used[i]=true;
     var changed=true;
     while(changed){
       changed=false;
-      for(var j=0;j<sorted.length;j++){
-        if(used[j]) continue;
+      for(var j=0;j<pts.length;j++){
+        if(used[j])continue;
         for(var k=0;k<track.length;k++){
-          var dist=getDistKm(track[k].lat,track[k].lon,sorted[j].lat,sorted[j].lon);
-          if(dist<80){
-            track.push(sorted[j]);
-            used[j]=true;
-            changed=true;
-            break;
+          if(distKm(track[k].lat,track[k].lon,pts[j].lat,pts[j].lon)<60){
+            track.push(pts[j]);used[j]=true;changed=true;break;
           }
         }
       }
     }
-
-    // Sort track points by time
     track.sort(function(a,b){return(a.time||'').localeCompare(b.time||'')});
-    if(track.length>=1) tracks.push(track);
+    tracks.push(track);
   }
-
   return tracks;
 }
 
-// Draw a single storm swath as a painted gradient path
-function drawStormSwath(track){
-  if(!track.length) return;
+// Paint one storm swath — a smooth transparent corridor
+function paintSwath(track){
+  if(!track.length)return;
+  var maxSize=0;
+  track.forEach(function(r){if(r.size>maxSize)maxSize=r.size});
 
-  var maxSize=Math.max.apply(null,track.map(function(r){return r.size}));
+  // Swath half-width in km based on max hail size
+  var halfW=maxSize>=2.75?10:maxSize>=1.75?7:maxSize>=1?5:3;
 
-  // For single-point tracks, draw concentric rings
   if(track.length===1){
-    drawSwathPoint(track[0]);
+    // Single point — just a transparent circle
+    var r=track[0];
+    var c=L.circle([r.lat,r.lon],{
+      radius:halfW*1000,fillColor:'#e65100',fillOpacity:0.2,
+      color:'#e65100',weight:1.5,opacity:0.4
+    });
+    c.addTo(map);meshSwathLayers.push(c);
     return;
   }
 
-  // Build the swath polygon — a thick path along the storm track
-  // Width based on max hail size in the track
-  var pathPoints=track.map(function(r){return{lat:r.lat,lon:r.lon,size:r.size}});
+  // Build left and right edges of the swath corridor
+  var leftEdge=[];
+  var rightEdge=[];
 
-  // For each segment between points, create a wide polygon
-  for(var i=0;i<pathPoints.length;i++){
-    drawSwathPoint(track[i]);
-  }
-
-  // Connect points with gradient fill between them
-  for(var i=0;i<pathPoints.length-1;i++){
-    var p1=pathPoints[i];
-    var p2=pathPoints[i+1];
-    var avgSize=(p1.size+p2.size)/2;
-    var widthKm=avgSize>=2.75?12:avgSize>=1.75?9:avgSize>=1?6:4;
-
-    // Create a polygon strip between the two points
-    var bearing=getBearing(p1.lat,p1.lon,p2.lat,p2.lon);
-    var perpBearing1=(bearing+90)%360;
-    var perpBearing2=(bearing+270)%360;
-
-    // Four corners of the swath segment
-    var c1=offsetPoint(p1.lat,p1.lon,perpBearing1,widthKm);
-    var c2=offsetPoint(p1.lat,p1.lon,perpBearing2,widthKm);
-    var c3=offsetPoint(p2.lat,p2.lon,perpBearing2,widthKm);
-    var c4=offsetPoint(p2.lat,p2.lon,perpBearing1,widthKm);
-
-    // Outer swath (yellow)
-    var outerPoly=L.polygon([
-      offsetPoint(p1.lat,p1.lon,perpBearing1,widthKm*1.8),
-      offsetPoint(p1.lat,p1.lon,perpBearing2,widthKm*1.8),
-      offsetPoint(p2.lat,p2.lon,perpBearing2,widthKm*1.8),
-      offsetPoint(p2.lat,p2.lon,perpBearing1,widthKm*1.8)
-    ],{fillColor:'#ffe082',fillOpacity:0.15,stroke:false});
-    outerPoly.addTo(map);meshSwathLayers.push(outerPoly);
-
-    // Mid swath (orange)
-    var midPoly=L.polygon([
-      offsetPoint(p1.lat,p1.lon,perpBearing1,widthKm*1.3),
-      offsetPoint(p1.lat,p1.lon,perpBearing2,widthKm*1.3),
-      offsetPoint(p2.lat,p2.lon,perpBearing2,widthKm*1.3),
-      offsetPoint(p2.lat,p2.lon,perpBearing1,widthKm*1.3)
-    ],{fillColor:'#ff9800',fillOpacity:0.18,stroke:false});
-    midPoly.addTo(map);meshSwathLayers.push(midPoly);
-
-    // Inner swath (red)
-    var innerPoly=L.polygon([c1,c2,c3,c4],{
-      fillColor:'#f44336',fillOpacity:0.22,stroke:false
-    });
-    innerPoly.addTo(map);meshSwathLayers.push(innerPoly);
-
-    // Core swath (dark red / purple for severe)
-    if(avgSize>=1.5){
-      var corePoly=L.polygon([
-        offsetPoint(p1.lat,p1.lon,perpBearing1,widthKm*0.5),
-        offsetPoint(p1.lat,p1.lon,perpBearing2,widthKm*0.5),
-        offsetPoint(p2.lat,p2.lon,perpBearing2,widthKm*0.5),
-        offsetPoint(p2.lat,p2.lon,perpBearing1,widthKm*0.5)
-      ],{fillColor:avgSize>=2.5?'#7b1fa2':'#c62828',fillOpacity:0.3,stroke:false});
-      corePoly.addTo(map);meshSwathLayers.push(corePoly);
+  for(var i=0;i<track.length;i++){
+    var bearing;
+    if(i<track.length-1){
+      bearing=bear(track[i].lat,track[i].lon,track[i+1].lat,track[i+1].lon);
+    }else{
+      bearing=bear(track[i-1].lat,track[i-1].lon,track[i].lat,track[i].lon);
     }
+
+    // Width varies with this point's hail size
+    var w=track[i].size>=2.75?10:track[i].size>=1.75?7:track[i].size>=1?5:3;
+
+    var left=offset(track[i].lat,track[i].lon,(bearing+270)%360,w);
+    var right=offset(track[i].lat,track[i].lon,(bearing+90)%360,w);
+    leftEdge.push(left);
+    rightEdge.push(right);
   }
 
-  // Draw storm track centerline
-  var centerCoords=track.map(function(r){return[r.lat,r.lon]});
-  var centerLine=L.polyline(centerCoords,{color:'rgba(255,255,255,0.4)',weight:1.5,dashArray:'4,4'});
-  centerLine.addTo(map);meshSwathLayers.push(centerLine);
-}
+  // Build the swath polygon: left edge forward, right edge backward
+  var swathCoords=leftEdge.concat(rightEdge.reverse());
 
-// Draw concentric gradient rings around a single report point
-function drawSwathPoint(r){
-  var layers=[
-    {mult:3.0,color:'#ffe082',opacity:0.10},
-    {mult:2.2,color:'#ffcc00',opacity:0.14},
-    {mult:1.6,color:'#ff9800',opacity:0.18},
-    {mult:1.1,color:'#ff5722',opacity:0.22},
-    {mult:0.7,color:'#f44336',opacity:0.28}
-  ];
-  if(r.size>=1.75) layers.push({mult:0.35,color:'#9c27b0',opacity:0.32});
-
-  var baseR=r.size*3000; // meters
-  layers.forEach(function(l){
-    var circle=L.circle([r.lat,r.lon],{
-      radius:baseR*l.mult,fillColor:l.color,fillOpacity:l.opacity,
-      color:l.color,weight:0.5,opacity:l.opacity
-    });
-    circle.addTo(map);meshSwathLayers.push(circle);
+  // Draw the swath — transparent orange/red
+  var swathColor=maxSize>=2.75?'#d32f2f':maxSize>=1.75?'#e65100':'#f57f17';
+  var swath=L.polygon(swathCoords,{
+    fillColor:swathColor,fillOpacity:0.22,
+    color:swathColor,weight:1.5,opacity:0.35,
+    smoothFactor:2
   });
+  swath.addTo(map);meshSwathLayers.push(swath);
 
-  // Center pin with data
-  var pin=L.circleMarker([r.lat,r.lon],{radius:3,fillColor:'#fff',fillOpacity:0.9,color:'#333',weight:1});
-  pin.bindPopup(
-    '<b>'+r.location+', '+r.state+'</b><br>'+
-    '<b style="color:#f44336">'+r.size+'" — '+(r.sizeLabel||'')+'</b><br>'+
-    r.county+' County<br>'+
-    '<span style="color:#888">NWS/SPC Verified</span><br><br>'+
-    '<button class="card-btn red" style="width:100%" onclick="findBusinesses('+r.lat+','+r.lon+')">Find Shops Here</button>'
-  );
-  pin.addTo(map);meshSwathLayers.push(pin);
+  // If severe, add a narrower inner core
+  if(maxSize>=1.75){
+    var innerLeft=[];var innerRight=[];
+    for(var i=0;i<track.length;i++){
+      var bearing;
+      if(i<track.length-1) bearing=bear(track[i].lat,track[i].lon,track[i+1].lat,track[i+1].lon);
+      else bearing=bear(track[i-1].lat,track[i-1].lon,track[i].lat,track[i].lon);
+      var w2=track[i].size>=2.75?4:track[i].size>=1.75?3:2;
+      innerLeft.push(offset(track[i].lat,track[i].lon,(bearing+270)%360,w2));
+      innerRight.push(offset(track[i].lat,track[i].lon,(bearing+90)%360,w2));
+    }
+    var innerCoords=innerLeft.concat(innerRight.reverse());
+    var coreColor=maxSize>=2.75?'#b71c1c':'#bf360c';
+    var core=L.polygon(innerCoords,{
+      fillColor:coreColor,fillOpacity:0.25,
+      color:coreColor,weight:0,smoothFactor:2
+    });
+    core.addTo(map);meshSwathLayers.push(core);
+  }
 }
 
-// ─── Geo math helpers ─────────────────────────────────
-function getDistKm(lat1,lon1,lat2,lon2){
-  var R=6371;var dLat=(lat2-lat1)*Math.PI/180;var dLon=(lon2-lon1)*Math.PI/180;
-  var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
-  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
-}
-function getBearing(lat1,lon1,lat2,lon2){
-  var dLon=(lon2-lon1)*Math.PI/180;
-  var y=Math.sin(dLon)*Math.cos(lat2*Math.PI/180);
-  var x=Math.cos(lat1*Math.PI/180)*Math.sin(lat2*Math.PI/180)-Math.sin(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.cos(dLon);
-  return(Math.atan2(y,x)*180/Math.PI+360)%360;
-}
-function offsetPoint(lat,lon,bearingDeg,distKm){
-  var R=6371;var brng=bearingDeg*Math.PI/180;var d=distKm/R;
-  var lat1=lat*Math.PI/180;var lon1=lon*Math.PI/180;
-  var lat2=Math.asin(Math.sin(lat1)*Math.cos(d)+Math.cos(lat1)*Math.sin(d)*Math.cos(brng));
-  var lon2=lon1+Math.atan2(Math.sin(brng)*Math.sin(d)*Math.cos(lat1),Math.cos(d)-Math.sin(lat1)*Math.sin(lat2));
-  return[lat2*180/Math.PI,lon2*180/Math.PI];
-};
+// ─── Geo helpers ──────────────────────────────────────
+function distKm(a,b,c,d){var R=6371,p=Math.PI/180,x=(c-a)*p,y=(d-b)*p,z=Math.sin(x/2)*Math.sin(x/2)+Math.cos(a*p)*Math.cos(c*p)*Math.sin(y/2)*Math.sin(y/2);return R*2*Math.atan2(Math.sqrt(z),Math.sqrt(1-z))}
+function bear(a,b,c,d){var p=Math.PI/180,y=Math.sin((d-b)*p)*Math.cos(c*p),x=Math.cos(a*p)*Math.sin(c*p)-Math.sin(a*p)*Math.cos(c*p)*Math.cos((d-b)*p);return(Math.atan2(y,x)/p+360)%360}
+function offset(lat,lon,brng,km){var R=6371,p=Math.PI/180,b=brng*p,d=km/R,a=lat*p,o=lon*p,la=Math.asin(Math.sin(a)*Math.cos(d)+Math.cos(a)*Math.sin(d)*Math.cos(b)),lo=o+Math.atan2(Math.sin(b)*Math.sin(d)*Math.cos(a),Math.cos(d)-Math.sin(a)*Math.sin(la));return[la/p,lo/p]};
 
 // ─── Tabs ─────────────────────────────────────────────
 function initTabs(){
