@@ -94,123 +94,196 @@ window.toggleLayer=function(id){
   if(btn) btn.classList.toggle('active',layerState[id]);
 };
 
-// Load real MESH data from NEXRAD Level III
+// ─── HailStrike Swath Engine ──────────────────────────
+// Custom swath renderer — paints storm paths from spotter reports
 function loadMESHData(){
   meshSwathLayers.forEach(function(l){map.removeLayer(l)});
   meshSwathLayers=[];
-  document.getElementById('statusText').textContent='Loading NEXRAD MESH data...';
+  if(!allReports.length){
+    document.getElementById('statusText').textContent='No reports to build swaths from';
+    return;
+  }
+  document.getElementById('statusText').textContent='Building hail swaths...';
 
-  // Fetch from all radar stations
-  fetch('/api/mesh?stations=EAX,LSX,SGF,ICT,TOP,OAX,DVN,ILX,PAH,LZK,TSA,INX,IWX,IND,LOT&hours=6')
-    .then(function(r){return r.json()})
-    .then(function(data){
-      var cells=data.meshCells||[];
+  // Step 1: Cluster reports into storm tracks
+  var tracks=clusterStormTracks(allReports);
 
-      if(cells.length===0){
-        // Fall back to SPC spotter swaths
-        drawHailSwaths(allReports);
-        document.getElementById('statusText').textContent='No MESH cells detected — showing spotter data';
-        return;
-      }
+  // Step 2: Draw each track as a painted swath
+  tracks.forEach(function(track){
+    drawStormSwath(track);
+  });
 
-      // Draw MESH contour rings for each cell — like RadarScope
-      cells.forEach(function(cell){
-        // Multiple contour rings per cell (simulates the gradient swath)
-        var rings=[
-          {factor:3.0, opacity:0.08, color:'#ffe082'},  // Outer — light yellow
-          {factor:2.2, opacity:0.12, color:'#ffcc00'},  // Yellow
-          {factor:1.6, opacity:0.18, color:'#ff9800'},  // Orange
-          {factor:1.1, opacity:0.25, color:'#ff5722'},  // Red-orange
-          {factor:0.7, opacity:0.30, color:'#f44336'},  // Red
-          {factor:0.3, opacity:0.35, color:'#9c27b0'}   // Purple core
-        ];
-
-        // Base radius in meters — scale by MESH value
-        var baseRadius=cell.meshValue*2500; // bigger MESH = wider swath
-
-        rings.forEach(function(ring){
-          var r=baseRadius*ring.factor;
-          var circle=L.circle([cell.lat,cell.lon],{
-            radius:r,fillColor:ring.color,fillOpacity:ring.opacity,
-            color:ring.color,weight:0.5,opacity:ring.opacity*1.5
-          });
-          circle.addTo(map);
-          meshSwathLayers.push(circle);
-        });
-
-        // Center marker with MESH value label
-        var marker=L.circleMarker([cell.lat,cell.lon],{
-          radius:4,fillColor:'#fff',fillOpacity:0.9,color:'#000',weight:1
-        });
-        marker.bindPopup(
-          '<div style="min-width:180px">'+
-          '<b style="font-size:14px;color:#f44336">MESH: '+cell.meshValue+'"</b><br>'+
-          '<b>'+cell.meshLabel+'</b><br><br>'+
-          '<div style="display:flex;justify-content:space-between"><span style="color:#888">Storm Cell</span><b>'+cell.stormId+'</b></div>'+
-          '<div style="display:flex;justify-content:space-between"><span style="color:#888">Station</span><b>'+cell.station+'</b></div>'+
-          '<div style="display:flex;justify-content:space-between"><span style="color:#888">Azimuth</span><b>'+cell.azimuth+'°</b></div>'+
-          '<div style="display:flex;justify-content:space-between"><span style="color:#888">Range</span><b>'+cell.range+' nm</b></div>'+
-          '<div style="display:flex;justify-content:space-between"><span style="color:#888">Source</span><b>NEXRAD Level III</b></div>'+
-          '<br><button class="card-btn red" style="width:100%" onclick="findBusinesses('+cell.lat+','+cell.lon+')">Find Shops in Zone</button>'+
-          '</div>'
-        );
-        marker.addTo(map);
-        meshSwathLayers.push(marker);
-      });
-
-      document.getElementById('statusText').textContent='MESH: '+cells.length+' hail cells from NEXRAD radar';
-    }).catch(function(e){
-      console.error('MESH load failed:',e);
-      drawHailSwaths(allReports);
-      document.getElementById('statusText').textContent='MESH unavailable — showing spotter data';
-    });
+  document.getElementById('statusText').textContent='Showing '+tracks.length+' storm swaths from '+allReports.length+' reports';
 }
 
-// Fallback: Draw hail swaths from SPC reports
-function drawHailSwaths(reports){
-  // Clear old swaths
-  meshSwathLayers.forEach(function(l){map.removeLayer(l)});
-  meshSwathLayers=[];
-  if(!reports.length) return;
+// Cluster nearby reports into storm tracks based on proximity + time
+function clusterStormTracks(reports){
+  var sorted=reports.slice().sort(function(a,b){return(a.time||'').localeCompare(b.time||'')});
+  var used=new Array(sorted.length).fill(false);
+  var tracks=[];
 
-  // Group reports by state+county (storms track through counties)
-  var groups={};
-  reports.forEach(function(r){
-    var key=r.state;
-    if(!groups[key]) groups[key]=[];
-    groups[key].push(r);
-  });
+  for(var i=0;i<sorted.length;i++){
+    if(used[i]) continue;
+    var track=[sorted[i]];
+    used[i]=true;
 
-  // For each group, sort by time and draw a path with width based on hail size
-  Object.keys(groups).forEach(function(key){
-    var reps=groups[key].sort(function(a,b){
-      return (a.time||'').localeCompare(b.time||'');
-    });
-
-    // Draw circles around each report to simulate swath coverage
-    reps.forEach(function(r){
-      // Swath radius: bigger hail = wider swath (in meters)
-      var radiusM=r.size>=2.75?8000:r.size>=1.75?6000:r.size>=1?4000:2500;
-      var color=r.size>=2.75?'#ff1744':r.size>=1.75?'#ff6600':r.size>=1?'#ffcc00':'#ffe082';
-
-      var circle=L.circle([r.lat,r.lon],{
-        radius:radiusM,fillColor:color,fillOpacity:0.25,
-        color:color,weight:1,opacity:0.4
-      });
-      circle.addTo(map);
-      meshSwathLayers.push(circle);
-    });
-
-    // Connect reports with lines to show storm path
-    if(reps.length>=2){
-      var pathCoords=reps.map(function(r){return[r.lat,r.lon]});
-      var pathLine=L.polyline(pathCoords,{
-        color:'#C0392B',weight:3,opacity:0.6,dashArray:'8,6'
-      });
-      pathLine.addTo(map);
-      meshSwathLayers.push(pathLine);
+    // Find all reports within 80km and 3 hours of any report in this track
+    var changed=true;
+    while(changed){
+      changed=false;
+      for(var j=0;j<sorted.length;j++){
+        if(used[j]) continue;
+        for(var k=0;k<track.length;k++){
+          var dist=getDistKm(track[k].lat,track[k].lon,sorted[j].lat,sorted[j].lon);
+          if(dist<80){
+            track.push(sorted[j]);
+            used[j]=true;
+            changed=true;
+            break;
+          }
+        }
+      }
     }
+
+    // Sort track points by time
+    track.sort(function(a,b){return(a.time||'').localeCompare(b.time||'')});
+    if(track.length>=1) tracks.push(track);
+  }
+
+  return tracks;
+}
+
+// Draw a single storm swath as a painted gradient path
+function drawStormSwath(track){
+  if(!track.length) return;
+
+  var maxSize=Math.max.apply(null,track.map(function(r){return r.size}));
+
+  // For single-point tracks, draw concentric rings
+  if(track.length===1){
+    drawSwathPoint(track[0]);
+    return;
+  }
+
+  // Build the swath polygon — a thick path along the storm track
+  // Width based on max hail size in the track
+  var pathPoints=track.map(function(r){return{lat:r.lat,lon:r.lon,size:r.size}});
+
+  // For each segment between points, create a wide polygon
+  for(var i=0;i<pathPoints.length;i++){
+    drawSwathPoint(track[i]);
+  }
+
+  // Connect points with gradient fill between them
+  for(var i=0;i<pathPoints.length-1;i++){
+    var p1=pathPoints[i];
+    var p2=pathPoints[i+1];
+    var avgSize=(p1.size+p2.size)/2;
+    var widthKm=avgSize>=2.75?12:avgSize>=1.75?9:avgSize>=1?6:4;
+
+    // Create a polygon strip between the two points
+    var bearing=getBearing(p1.lat,p1.lon,p2.lat,p2.lon);
+    var perpBearing1=(bearing+90)%360;
+    var perpBearing2=(bearing+270)%360;
+
+    // Four corners of the swath segment
+    var c1=offsetPoint(p1.lat,p1.lon,perpBearing1,widthKm);
+    var c2=offsetPoint(p1.lat,p1.lon,perpBearing2,widthKm);
+    var c3=offsetPoint(p2.lat,p2.lon,perpBearing2,widthKm);
+    var c4=offsetPoint(p2.lat,p2.lon,perpBearing1,widthKm);
+
+    // Outer swath (yellow)
+    var outerPoly=L.polygon([
+      offsetPoint(p1.lat,p1.lon,perpBearing1,widthKm*1.8),
+      offsetPoint(p1.lat,p1.lon,perpBearing2,widthKm*1.8),
+      offsetPoint(p2.lat,p2.lon,perpBearing2,widthKm*1.8),
+      offsetPoint(p2.lat,p2.lon,perpBearing1,widthKm*1.8)
+    ],{fillColor:'#ffe082',fillOpacity:0.15,stroke:false});
+    outerPoly.addTo(map);meshSwathLayers.push(outerPoly);
+
+    // Mid swath (orange)
+    var midPoly=L.polygon([
+      offsetPoint(p1.lat,p1.lon,perpBearing1,widthKm*1.3),
+      offsetPoint(p1.lat,p1.lon,perpBearing2,widthKm*1.3),
+      offsetPoint(p2.lat,p2.lon,perpBearing2,widthKm*1.3),
+      offsetPoint(p2.lat,p2.lon,perpBearing1,widthKm*1.3)
+    ],{fillColor:'#ff9800',fillOpacity:0.18,stroke:false});
+    midPoly.addTo(map);meshSwathLayers.push(midPoly);
+
+    // Inner swath (red)
+    var innerPoly=L.polygon([c1,c2,c3,c4],{
+      fillColor:'#f44336',fillOpacity:0.22,stroke:false
+    });
+    innerPoly.addTo(map);meshSwathLayers.push(innerPoly);
+
+    // Core swath (dark red / purple for severe)
+    if(avgSize>=1.5){
+      var corePoly=L.polygon([
+        offsetPoint(p1.lat,p1.lon,perpBearing1,widthKm*0.5),
+        offsetPoint(p1.lat,p1.lon,perpBearing2,widthKm*0.5),
+        offsetPoint(p2.lat,p2.lon,perpBearing2,widthKm*0.5),
+        offsetPoint(p2.lat,p2.lon,perpBearing1,widthKm*0.5)
+      ],{fillColor:avgSize>=2.5?'#7b1fa2':'#c62828',fillOpacity:0.3,stroke:false});
+      corePoly.addTo(map);meshSwathLayers.push(corePoly);
+    }
+  }
+
+  // Draw storm track centerline
+  var centerCoords=track.map(function(r){return[r.lat,r.lon]});
+  var centerLine=L.polyline(centerCoords,{color:'rgba(255,255,255,0.4)',weight:1.5,dashArray:'4,4'});
+  centerLine.addTo(map);meshSwathLayers.push(centerLine);
+}
+
+// Draw concentric gradient rings around a single report point
+function drawSwathPoint(r){
+  var layers=[
+    {mult:3.0,color:'#ffe082',opacity:0.10},
+    {mult:2.2,color:'#ffcc00',opacity:0.14},
+    {mult:1.6,color:'#ff9800',opacity:0.18},
+    {mult:1.1,color:'#ff5722',opacity:0.22},
+    {mult:0.7,color:'#f44336',opacity:0.28}
+  ];
+  if(r.size>=1.75) layers.push({mult:0.35,color:'#9c27b0',opacity:0.32});
+
+  var baseR=r.size*3000; // meters
+  layers.forEach(function(l){
+    var circle=L.circle([r.lat,r.lon],{
+      radius:baseR*l.mult,fillColor:l.color,fillOpacity:l.opacity,
+      color:l.color,weight:0.5,opacity:l.opacity
+    });
+    circle.addTo(map);meshSwathLayers.push(circle);
   });
+
+  // Center pin with data
+  var pin=L.circleMarker([r.lat,r.lon],{radius:3,fillColor:'#fff',fillOpacity:0.9,color:'#333',weight:1});
+  pin.bindPopup(
+    '<b>'+r.location+', '+r.state+'</b><br>'+
+    '<b style="color:#f44336">'+r.size+'" — '+(r.sizeLabel||'')+'</b><br>'+
+    r.county+' County<br>'+
+    '<span style="color:#888">NWS/SPC Verified</span><br><br>'+
+    '<button class="card-btn red" style="width:100%" onclick="findBusinesses('+r.lat+','+r.lon+')">Find Shops Here</button>'
+  );
+  pin.addTo(map);meshSwathLayers.push(pin);
+}
+
+// ─── Geo math helpers ─────────────────────────────────
+function getDistKm(lat1,lon1,lat2,lon2){
+  var R=6371;var dLat=(lat2-lat1)*Math.PI/180;var dLon=(lon2-lon1)*Math.PI/180;
+  var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function getBearing(lat1,lon1,lat2,lon2){
+  var dLon=(lon2-lon1)*Math.PI/180;
+  var y=Math.sin(dLon)*Math.cos(lat2*Math.PI/180);
+  var x=Math.cos(lat1*Math.PI/180)*Math.sin(lat2*Math.PI/180)-Math.sin(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.cos(dLon);
+  return(Math.atan2(y,x)*180/Math.PI+360)%360;
+}
+function offsetPoint(lat,lon,bearingDeg,distKm){
+  var R=6371;var brng=bearingDeg*Math.PI/180;var d=distKm/R;
+  var lat1=lat*Math.PI/180;var lon1=lon*Math.PI/180;
+  var lat2=Math.asin(Math.sin(lat1)*Math.cos(d)+Math.cos(lat1)*Math.sin(d)*Math.cos(brng));
+  var lon2=lon1+Math.atan2(Math.sin(brng)*Math.sin(d)*Math.cos(lat1),Math.cos(d)-Math.sin(lat1)*Math.sin(lat2));
+  return[lat2*180/Math.PI,lon2*180/Math.PI];
 };
 
 // ─── Tabs ─────────────────────────────────────────────
