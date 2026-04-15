@@ -31,6 +31,7 @@ var map,allReports=[],allAlerts=[],scoutZones=[],leads=[];
 var layers={ref:null,vel:null,pre:null};
 var layerState={ref:true,vel:false,pre:false};
 var markers=[];
+var demoCache={}; // demographics cache by state
 
 // ─── Init ─────────────────────────────────────────────
 function initApp(){
@@ -118,20 +119,97 @@ function loadStorms(){
   });
 }
 
+// ─── Fetch demographics for a state ───────────────────
+function fetchDemographics(state){
+  if(demoCache[state]) return Promise.resolve(demoCache[state]);
+  return fetch('/api/demographics?state='+state).then(function(r){return r.json()}).then(function(data){
+    var byCounty={};
+    (data.counties||[]).forEach(function(c){
+      // Census returns "Howard County, Indiana" — extract county name
+      var name=c.name.split(',')[0].replace(' County','').trim().toLowerCase();
+      byCounty[name]=c;
+    });
+    demoCache[state]={summary:data.summary,byCounty:byCounty};
+    return demoCache[state];
+  }).catch(function(){return null});
+}
+
+// ─── Load demographics for all states in reports ──────
+function loadAllDemographics(reports){
+  var states=[...new Set(reports.map(function(r){return r.state}))];
+  return Promise.all(states.map(function(s){return fetchDemographics(s)}));
+}
+
+// ─── Get county demo data ─────────────────────────────
+function getCountyDemo(county,state){
+  var d=demoCache[state];
+  if(!d) return null;
+  var key=county.toLowerCase().replace(' county','').trim();
+  return d.byCounty[key]||null;
+}
+
+// ─── Estimate vehicles/houses affected ────────────────
+function estimateImpact(demo,size){
+  if(!demo) return {vehicles:'N/A',houses:'N/A',income:'N/A',homeValue:'N/A',pop:'N/A'};
+  // Rough estimate: hail swath covers ~5-15% of a county depending on size
+  var coverage=size>=2.75?0.12:size>=1.75?0.08:size>=1?0.05:0.03;
+  var affectedPop=Math.round(demo.population*coverage);
+  // Avg 1.88 vehicles per household, avg 2.5 people per household
+  var households=Math.round(affectedPop/2.5);
+  var vehicles=Math.round(households*1.88);
+  return {
+    vehicles:vehicles.toLocaleString(),
+    houses:households.toLocaleString(),
+    income:'$'+((demo.medianIncome||0)/1000).toFixed(0)+'k',
+    homeValue:'$'+((demo.medianHomeValue||0)/1000).toFixed(0)+'k',
+    pop:affectedPop.toLocaleString(),
+    totalPop:demo.population.toLocaleString(),
+    totalHousing:(demo.totalHousingUnits||0).toLocaleString()
+  };
+}
+
 // ─── Render Map Markers ───────────────────────────────
 function renderMap(reports){
   markers.forEach(function(m){map.removeLayer(m)});
   markers=[];
-  reports.forEach(function(r){
-    var color=r.size>=2.75?'#ff1744':r.size>=1.75?'#C0392B':r.size>=1?'#ffab00':'#00e5ff';
-    var radius=r.size>=2.75?9:r.size>=1.75?7:r.size>=1?5:4;
-    var m=L.circleMarker([r.lat,r.lon],{radius:radius,fillColor:color,fillOpacity:0.8,color:'#fff',weight:1.5,bubblingMouseEvents:false});
-    if(r.size>=1.75) L.circleMarker([r.lat,r.lon],{radius:radius+5,fillColor:color,fillOpacity:0.12,stroke:false,interactive:false}).addTo(map);
-    m.bindPopup('<b>'+r.location+', '+r.state+'</b><br>Size: <b style="color:'+color+'">'+r.size+'" — '+r.sizeLabel+'</b><br>County: '+r.county+'<br>Time: '+r.time+' '+(r.day==='today'?'Today':'Yesterday')+(r.comments?'<br><i>'+r.comments+'</i>':'')+'<br><br><button class="card-btn red" onclick="addLeadFromMap(\''+r.location+'\',\''+r.county+'\',\''+r.state+'\')">+ Add Lead</button>');
-    m.addTo(map);
-    markers.push(m);
+
+  // Load demographics then render
+  loadAllDemographics(reports).then(function(){
+    reports.forEach(function(r){
+      var color=r.size>=2.75?'#ff1744':r.size>=1.75?'#C0392B':r.size>=1?'#ffab00':'#00e5ff';
+      var radius=r.size>=2.75?9:r.size>=1.75?7:r.size>=1?5:4;
+      var m=L.circleMarker([r.lat,r.lon],{radius:radius,fillColor:color,fillOpacity:0.8,color:'#fff',weight:1.5,bubblingMouseEvents:false});
+      if(r.size>=1.75) L.circleMarker([r.lat,r.lon],{radius:radius+5,fillColor:color,fillOpacity:0.12,stroke:false,interactive:false}).addTo(map);
+
+      var demo=getCountyDemo(r.county,r.state);
+      var impact=estimateImpact(demo,r.size);
+
+      var popup='<div style="min-width:220px">'+
+        '<b style="font-size:14px">'+r.location+', '+r.state+'</b><br>'+
+        '<div style="margin:6px 0;padding:6px 0;border-top:1px solid #2a2a3e;border-bottom:1px solid #2a2a3e">'+
+          '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Hail Size</span><b style="color:'+color+'">'+r.size+'" — '+r.sizeLabel+'</b></div>'+
+          '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">County</span><b>'+r.county+'</b></div>'+
+          '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Time</span><b>'+r.time+' '+(r.day==='today'?'Today':'Yesterday')+'</b></div>'+
+        '</div>'+
+        '<div style="margin:6px 0;padding:6px 0;border-bottom:1px solid #2a2a3e">'+
+          '<div style="font-size:10px;color:#C0392B;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-weight:700">Estimated Impact</div>'+
+          '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Vehicles Affected</span><b style="color:#00e5ff">~'+impact.vehicles+'</b></div>'+
+          '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Houses Affected</span><b style="color:#ffab00">~'+impact.houses+'</b></div>'+
+          '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Median Income</span><b>'+impact.income+'</b></div>'+
+          '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Median Home Value</span><b>'+impact.homeValue+'</b></div>'+
+          '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Est. People Affected</span><b>'+impact.pop+'</b></div>'+
+          '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">County Population</span><b>'+impact.totalPop+'</b></div>'+
+        '</div>'+
+        (r.comments?'<div style="font-style:italic;color:#888;font-size:11px;margin:4px 0">'+r.comments+'</div>':'')+
+        '<button class="card-btn red" style="margin-top:6px;width:100%" onclick="addLeadFromMap(\''+r.location+'\',\''+r.county+'\',\''+r.state+'\')">+ ADD LEAD</button>'+
+      '</div>';
+
+      m.bindPopup(popup,{maxWidth:300});
+      m.addTo(map);
+      markers.push(m);
+    });
+    if(markers.length) fitAllMarkers();
   });
-  if(markers.length) fitAllMarkers();
 }
 
 // ─── Render Reports List ──────────────────────────────
