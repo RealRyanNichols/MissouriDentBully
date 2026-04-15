@@ -2,7 +2,7 @@
   "version": 2,
   "rewrites": [
     { "source": "/api/chat", "destination": "/api/chat" },
-    { "source": "/api/lead", "destination": "/api/lead" }
+    { "source": "/api/lead", "destination": "/api/lead" },
+    { "source": "/api/storms", "destination": "/api/storms" }
   ]
 }
-
