@@ -2,455 +2,163 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HailStrike Ops — Storm Intelligence Platform</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="HailStrike Ops">
+<title>HailStrike Ops</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
---hs-bg:#06060a;--hs-surface:#0c0c14;--hs-card:#10101a;--hs-border:#1a1a2e;
---hs-red:#C0392B;--hs-red-glow:rgba(192,57,43,0.4);
---hs-cyan:#00e5ff;--hs-cyan-glow:rgba(0,229,255,0.3);
---hs-amber:#ffab00;--hs-amber-glow:rgba(255,171,0,0.3);
---hs-green:#00e676;--hs-white:#e8e8f0;--hs-muted:#6a6a8a;
---hs-font:'Inter',sans-serif;--hs-mono:'JetBrains Mono',monospace;
-}
-body{background:var(--hs-bg);color:var(--hs-white);font-family:var(--hs-font);overflow:hidden;height:100vh}
-a{color:var(--hs-cyan);text-decoration:none}
-
-/* ── Top Bar ─────────────────────────────────────────── */
-.topbar{height:48px;background:var(--hs-surface);border-bottom:1px solid var(--hs-border);display:flex;align-items:center;justify-content:space-between;padding:0 20px;z-index:1000;position:relative}
-.topbar-brand{display:flex;align-items:center;gap:10px}
-.topbar-logo{font-family:var(--hs-mono);font-weight:900;font-size:16px;letter-spacing:2px;text-transform:uppercase}
-.topbar-logo span{color:var(--hs-red)}
-.topbar-badge{background:var(--hs-red);color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:2px;letter-spacing:1px;animation:pulse-badge 2s infinite}
-@keyframes pulse-badge{0%,100%{opacity:1}50%{opacity:0.6}}
-.topbar-nav{display:flex;gap:4px}
-.topbar-nav button{background:none;border:1px solid transparent;color:var(--hs-muted);font-family:var(--hs-font);font-size:12px;font-weight:600;padding:6px 14px;cursor:pointer;border-radius:3px;letter-spacing:0.5px;text-transform:uppercase;transition:all 0.15s}
-.topbar-nav button:hover,.topbar-nav button.active{color:var(--hs-white);border-color:var(--hs-border);background:var(--hs-card)}
-.topbar-nav button.active{border-color:var(--hs-red);color:var(--hs-red)}
-.topbar-status{display:flex;align-items:center;gap:12px;font-size:11px;color:var(--hs-muted)}
-.topbar-status .live-dot{width:8px;height:8px;background:var(--hs-green);border-radius:50%;animation:pulse-dot 1.5s infinite}
-@keyframes pulse-dot{0%,100%{box-shadow:0 0 0 0 rgba(0,230,118,0.6)}50%{box-shadow:0 0 0 6px rgba(0,230,118,0)}}
-
-/* ── Layout ──────────────────────────────────────────── */
-.app-layout{display:flex;height:calc(100vh - 48px)}
-.sidebar{width:340px;background:var(--hs-surface);border-right:1px solid var(--hs-border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
-.map-container{flex:1;position:relative}
-#map{width:100%;height:100%}
-
-/* ── Sidebar ─────────────────────────────────────────── */
-.sidebar-header{padding:16px;border-bottom:1px solid var(--hs-border)}
-.sidebar-header h2{font-size:13px;text-transform:uppercase;letter-spacing:1.5px;color:var(--hs-muted);margin-bottom:12px}
-.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.stat-card{background:var(--hs-card);border:1px solid var(--hs-border);border-radius:4px;padding:10px 12px}
-.stat-card .stat-val{font-family:var(--hs-mono);font-size:22px;font-weight:700;color:var(--hs-cyan)}
-.stat-card .stat-val.red{color:var(--hs-red)}
-.stat-card .stat-val.amber{color:var(--hs-amber)}
-.stat-card .stat-val.green{color:var(--hs-green)}
-.stat-card .stat-label{font-size:10px;color:var(--hs-muted);text-transform:uppercase;letter-spacing:1px;margin-top:2px}
-
-.sidebar-filters{padding:12px 16px;border-bottom:1px solid var(--hs-border);display:flex;gap:6px;flex-wrap:wrap}
-.filter-btn{background:var(--hs-card);border:1px solid var(--hs-border);color:var(--hs-muted);font-size:11px;padding:5px 10px;border-radius:3px;cursor:pointer;font-family:var(--hs-font);transition:all 0.15s}
-.filter-btn:hover,.filter-btn.active{border-color:var(--hs-red);color:var(--hs-white)}
-
-.sidebar-list{flex:1;overflow-y:auto;padding:8px}
-.sidebar-list::-webkit-scrollbar{width:4px}
-.sidebar-list::-webkit-scrollbar-thumb{background:var(--hs-border);border-radius:2px}
-
-.storm-item{background:var(--hs-card);border:1px solid var(--hs-border);border-radius:4px;padding:12px;margin-bottom:6px;cursor:pointer;transition:all 0.15s}
-.storm-item:hover{border-color:var(--hs-red);background:#12121e}
-.storm-item.active{border-color:var(--hs-red);box-shadow:0 0 12px var(--hs-red-glow)}
-.storm-item-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
-.storm-item-location{font-weight:700;font-size:13px}
-.storm-item-size{font-family:var(--hs-mono);font-weight:700;padding:2px 8px;border-radius:2px;font-size:12px}
-.size-sm{background:rgba(0,229,255,0.15);color:var(--hs-cyan)}
-.size-md{background:rgba(255,171,0,0.15);color:var(--hs-amber)}
-.size-lg{background:rgba(192,57,43,0.15);color:var(--hs-red)}
-.size-xl{background:rgba(192,57,43,0.3);color:#ff6b6b}
-.storm-item-meta{display:flex;gap:12px;font-size:11px;color:var(--hs-muted)}
-.storm-item-meta span{display:flex;align-items:center;gap:4px}
-
-/* ── Map Overlays ────────────────────────────────────── */
-.map-overlay-stats{position:absolute;top:12px;right:12px;z-index:800;display:flex;flex-direction:column;gap:6px}
-.map-chip{background:rgba(12,12,20,0.9);border:1px solid var(--hs-border);backdrop-filter:blur(8px);padding:8px 14px;border-radius:4px;font-size:11px;display:flex;align-items:center;gap:8px}
-.map-chip .chip-dot{width:10px;height:10px;border-radius:50%}
-.map-legend{position:absolute;bottom:24px;right:12px;z-index:800;background:rgba(12,12,20,0.9);border:1px solid var(--hs-border);backdrop-filter:blur(8px);padding:12px 16px;border-radius:4px}
-.map-legend h4{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--hs-muted);margin-bottom:8px}
-.legend-row{display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:4px}
-.legend-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
-
-.map-title-overlay{position:absolute;top:12px;left:12px;z-index:800;background:rgba(12,12,20,0.9);border:1px solid var(--hs-border);backdrop-filter:blur(8px);padding:10px 16px;border-radius:4px}
-.map-title-overlay h3{font-family:var(--hs-mono);font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--hs-white)}
-.map-title-overlay p{font-size:10px;color:var(--hs-muted);margin-top:2px}
-
-/* ── Loading ─────────────────────────────────────────── */
-.loading-overlay{position:absolute;inset:0;background:var(--hs-bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2000;transition:opacity 0.5s}
-.loading-overlay.hidden{opacity:0;pointer-events:none}
-.loading-spinner{width:40px;height:40px;border:3px solid var(--hs-border);border-top-color:var(--hs-red);border-radius:50%;animation:spin 0.8s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
-.loading-text{margin-top:16px;font-family:var(--hs-mono);font-size:12px;color:var(--hs-muted);letter-spacing:1px}
-
-/* ── Leaflet Overrides ───────────────────────────────── */
-.leaflet-popup-content-wrapper{background:var(--hs-card)!important;color:var(--hs-white)!important;border:1px solid var(--hs-border)!important;border-radius:4px!important;box-shadow:0 8px 32px rgba(0,0,0,0.6)!important}
-.leaflet-popup-tip{background:var(--hs-card)!important;border:1px solid var(--hs-border)!important}
-.leaflet-popup-content{font-family:var(--hs-font)!important;font-size:13px!important;margin:12px 16px!important}
-.leaflet-control-zoom a{background:var(--hs-surface)!important;color:var(--hs-white)!important;border-color:var(--hs-border)!important}
-.leaflet-control-zoom a:hover{background:var(--hs-card)!important}
-.popup-title{font-weight:700;font-size:14px;margin-bottom:8px;color:var(--hs-white)}
-.popup-row{display:flex;justify-content:space-between;padding:3px 0;font-size:12px}
-.popup-row .label{color:var(--hs-muted)}
-.popup-row .value{font-family:var(--hs-mono);font-weight:600}
-.popup-actions{margin-top:10px;display:flex;gap:6px}
-.popup-btn{background:var(--hs-red);color:#fff;border:none;padding:6px 12px;font-size:11px;font-weight:700;border-radius:3px;cursor:pointer;font-family:var(--hs-font);letter-spacing:0.5px;text-transform:uppercase}
-.popup-btn.secondary{background:var(--hs-surface);border:1px solid var(--hs-border)}
-
-/* ── Pulse Animation for Map Markers ─────────────────── */
-.hail-marker{border-radius:50%;opacity:0.9;border:2px solid rgba(255,255,255,0.3);transition:transform 0.2s}
-.hail-marker:hover{transform:scale(1.3);opacity:1}
-.hail-pulse{position:absolute;border-radius:50%;animation:marker-pulse 2s infinite;pointer-events:none}
-@keyframes marker-pulse{0%{transform:scale(1);opacity:0.6}100%{transform:scale(3);opacity:0}}
-
-/* ── Responsive ──────────────────────────────────────── */
-@media(max-width:768px){
-.sidebar{display:none}
-.topbar-nav{display:none}
-}
-</style>
+<link rel="stylesheet" href="/ops/styles.css"/>
 </head>
 <body>
 
-<div class="loading-overlay" id="loadingOverlay">
-<div class="loading-spinner"></div>
-<div class="loading-text">INITIALIZING HAILSTRIKE OPS...</div>
-</div>
-
-<div class="topbar">
-<div class="topbar-brand">
-<div class="topbar-logo">HAIL<span>STRIKE</span> OPS</div>
-<span class="topbar-badge">LIVE</span>
-</div>
-<div class="topbar-nav">
-<button class="active" data-view="map">STORM MAP</button>
-<button data-view="leads">LEADS</button>
-<button data-view="alerts">ALERTS</button>
-<button data-view="analytics">ANALYTICS</button>
-</div>
-<div class="topbar-status">
-<div class="live-dot"></div>
-<span id="lastUpdated">Fetching data...</span>
+<!-- PASSWORD GATE -->
+<div id="authGate">
+<div class="auth-box">
+<div class="auth-logo">HAIL<span>STRIKE</span> OPS</div>
+<p class="auth-sub">Missouri Dent Bully — Storm Intelligence</p>
+<input type="password" id="authPin" placeholder="Enter access code" autofocus>
+<button id="authBtn" onclick="checkAuth()">ENTER</button>
+<div id="authError" style="display:none;color:#C0392B;font-size:12px;margin-top:8px">Wrong code. Try again.</div>
 </div>
 </div>
 
-<div class="app-layout">
-<div class="sidebar">
-<div class="sidebar-header">
-<h2>Storm Dashboard</h2>
-<div class="stat-grid">
-<div class="stat-card">
-<div class="stat-val" id="statReports">--</div>
-<div class="stat-label">Hail Reports</div>
+<!-- MAIN APP (hidden until auth) -->
+<div id="mainApp" style="display:none">
+
+<!-- TOP BAR -->
+<header class="topbar">
+<div class="topbar-left">
+<div class="topbar-logo">HAIL<span>STRIKE</span></div>
+<span class="badge-live">LIVE</span>
 </div>
-<div class="stat-card">
-<div class="stat-val red" id="statMaxSize">--</div>
-<div class="stat-label">Max Size (in)</div>
+<div class="topbar-right">
+<span class="status-dot"></span>
+<span id="statusText">Connecting...</span>
 </div>
-<div class="stat-card">
-<div class="stat-val amber" id="statStates">--</div>
-<div class="stat-label">States Hit</div>
+</header>
+
+<!-- SEARCH BAR -->
+<div class="search-bar">
+<input type="text" id="searchInput" placeholder="Search city, county, or state...">
+<select id="stateFilter">
+<option value="">All States</option>
+<option value="MO" selected>Missouri</option>
+<option value="IL">Illinois</option>
+<option value="KS">Kansas</option>
+<option value="OK">Oklahoma</option>
+<option value="AR">Arkansas</option>
+<option value="IA">Iowa</option>
+<option value="TN">Tennessee</option>
+<option value="KY">Kentucky</option>
+<option value="IN">Indiana</option>
+<option value="TX">Texas</option>
+<option value="NE">Nebraska</option>
+<option value="CO">Colorado</option>
+<option value="">── All States ──</option>
+</select>
 </div>
-<div class="stat-card">
-<div class="stat-val green" id="statAlerts">--</div>
-<div class="stat-label">Active Alerts</div>
+
+<!-- STAT CARDS -->
+<div class="stat-row">
+<div class="stat-card"><div class="stat-val cyan" id="sReports">--</div><div class="stat-lbl">Reports</div></div>
+<div class="stat-card"><div class="stat-val red" id="sMaxSize">--</div><div class="stat-lbl">Max Size</div></div>
+<div class="stat-card"><div class="stat-val amber" id="sZones">--</div><div class="stat-lbl">Hot Zones</div></div>
+<div class="stat-card"><div class="stat-val green" id="sAlerts">--</div><div class="stat-lbl">Alerts</div></div>
 </div>
+
+<!-- TAB NAVIGATION -->
+<nav class="tab-nav">
+<button class="tab active" data-tab="map">Map</button>
+<button class="tab" data-tab="scout">Scout</button>
+<button class="tab" data-tab="alerts">Alerts</button>
+<button class="tab" data-tab="leads">Leads</button>
+<button class="tab" data-tab="outreach">Outreach</button>
+</nav>
+
+<!-- TAB CONTENT -->
+<div class="tab-content">
+
+<!-- MAP TAB -->
+<div class="tab-panel active" id="panel-map">
+<div class="map-wrap"><div id="map"></div></div>
+<div class="map-controls">
+<button class="ctrl-btn active" id="btnRef" onclick="toggleLayer('ref')">Radar</button>
+<button class="ctrl-btn" id="btnVel" onclick="toggleLayer('vel')">Velocity</button>
+<button class="ctrl-btn" id="btnPre" onclick="toggleLayer('pre')">Precip</button>
+<button class="ctrl-btn" onclick="fitAllMarkers()">Fit All</button>
+</div>
+<div class="section-head">Recent Hail Reports</div>
+<div id="reportsList" class="card-list">Loading...</div>
+</div>
+
+<!-- SCOUT TAB -->
+<div class="tab-panel" id="panel-scout">
+<div class="section-head">Scouting Zones — Ranked by Opportunity</div>
+<p class="section-sub">Highest-value areas to deploy. Score based on hail size, report density, and proximity.</p>
+<div id="scoutList" class="card-list">Loading scouting data...</div>
+<div class="section-head" style="margin-top:20px">Ad Targeting — Meta/Facebook</div>
+<p class="section-sub">Ready-to-use targeting for each zone. Copy into Meta Business Suite.</p>
+<div id="adTargeting" class="card-list"></div>
+</div>
+
+<!-- ALERTS TAB -->
+<div class="tab-panel" id="panel-alerts">
+<div class="section-head">Live Severe Weather Alerts</div>
+<p class="section-sub">NWS warnings with hail data extracted. Share directly to social or text.</p>
+<div id="alertsList" class="card-list">Loading alerts...</div>
+</div>
+
+<!-- LEADS TAB -->
+<div class="tab-panel" id="panel-leads">
+<div class="section-head">Lead Tracker</div>
+<div class="lead-filters">
+<button class="filter-chip active" data-lf="all">All</button>
+<button class="filter-chip" data-lf="new">New</button>
+<button class="filter-chip" data-lf="contacted">Contacted</button>
+<button class="filter-chip" data-lf="scheduled">Scheduled</button>
+<button class="filter-chip" data-lf="completed">Completed</button>
+</div>
+<button class="action-btn" onclick="showAddLead()">+ ADD LEAD</button>
+<div id="leadsList" class="card-list"></div>
+<div id="addLeadForm" style="display:none" class="form-card">
+<div class="form-title">New Lead</div>
+<input type="text" id="lName" placeholder="Name">
+<input type="tel" id="lPhone" placeholder="Phone">
+<input type="email" id="lEmail" placeholder="Email">
+<input type="text" id="lAddress" placeholder="Address">
+<input type="text" id="lCity" placeholder="City">
+<input type="text" id="lState" placeholder="State" value="MO">
+<input type="text" id="lVehicle" placeholder="Vehicle (year make model)">
+<select id="lDamage"><option value="auto-hail">Auto — Hail Damage</option><option value="auto-dent">Auto — Door Ding/Dent</option><option value="auto-crease">Auto — Crease</option><option value="roof">Roof Damage</option><option value="solar">Solar Panel</option><option value="fleet">Fleet/Dealership</option></select>
+<select id="lSource"><option value="storm-scout">Storm Scout</option><option value="door-knock">Door Knock</option><option value="referral">Referral</option><option value="facebook-ad">Facebook Ad</option><option value="instagram-ad">Instagram Ad</option><option value="walk-in">Walk-In</option><option value="phone-call">Phone Call</option></select>
+<textarea id="lNotes" placeholder="Notes..." rows="2"></textarea>
+<div style="display:flex;gap:8px"><button class="action-btn" onclick="saveLead()">SAVE LEAD</button><button class="action-btn secondary" onclick="hideAddLead()">CANCEL</button></div>
 </div>
 </div>
 
-<div class="sidebar-filters">
-<button class="filter-btn active" data-filter="all">All Sizes</button>
-<button class="filter-btn" data-filter="1">1"+ Quarter</button>
-<button class="filter-btn" data-filter="1.75">1.75"+ Golf</button>
-<button class="filter-btn" data-filter="2.75">2.75"+ Baseball</button>
+<!-- OUTREACH TAB -->
+<div class="tab-panel" id="panel-outreach">
+<div class="section-head">Outreach Campaigns</div>
+<p class="section-sub">Pre-built SMS & email templates. Auto-filled with storm data.</p>
+<div id="templatesList" class="card-list">Loading templates...</div>
+<div class="section-head" style="margin-top:20px">Quick Blast</div>
+<p class="section-sub">Send to all leads in a storm zone.</p>
+<select id="blastTemplate" class="full-select">
+<option value="pdr_hail_initial">PDR Hail — First Contact</option>
+<option value="pdr_hail_followup">PDR Hail — Follow Up</option>
+<option value="pdr_insurance">PDR — Insurance Reminder</option>
+</select>
+<textarea id="blastPreview" rows="4" class="full-textarea" readonly></textarea>
+<button class="action-btn" onclick="sendBlast()">SEND TO ALL LEADS IN ZONE</button>
+<p class="section-sub" style="margin-top:8px;color:var(--hs-amber)">SMS requires Twilio setup. Email requires SendGrid setup.</p>
 </div>
 
-<div class="sidebar-list" id="stormList">
-<div style="text-align:center;padding:40px;color:var(--hs-muted);font-size:12px">Loading storm reports...</div>
-</div>
-</div>
-
-<div class="map-container">
-<div id="map"></div>
-
-<div class="map-title-overlay">
-<h3>HAILSTRIKE RADAR</h3>
-<p id="mapSubtitle">Loading NOAA/SPC storm data...</p>
-</div>
-
-<div class="map-overlay-stats">
-<div class="map-chip"><div class="chip-dot" style="background:var(--hs-green)"></div><span id="chipActive">-- active warnings</span></div>
-<div class="map-chip"><div class="chip-dot" style="background:var(--hs-red)"></div><span id="chipSevere">-- severe reports</span></div>
-</div>
-
-<div class="radar-controls" style="position:absolute;top:60px;left:12px;z-index:800;display:flex;flex-direction:column;gap:4px">
-<button class="map-chip" style="cursor:pointer;border:none;font-family:var(--hs-font)" onclick="toggleRadar('reflectivity')" id="btnReflectivity">NEXRAD Reflectivity: ON</button>
-<button class="map-chip" style="cursor:pointer;border:none;font-family:var(--hs-font)" onclick="toggleRadar('velocity')" id="btnVelocity">Storm Velocity: OFF</button>
-<button class="map-chip" style="cursor:pointer;border:none;font-family:var(--hs-font)" onclick="toggleRadar('precip')" id="btnPrecip">Precipitation: OFF</button>
-</div>
-
-<div id="alertsPanel" style="position:absolute;bottom:24px;left:12px;z-index:800;max-width:360px;max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:4px">
-</div>
-
-<div class="map-legend">
-<h4>Hail Size</h4>
-<div class="legend-row"><div class="legend-dot" style="background:#00e5ff;box-shadow:0 0 6px rgba(0,229,255,0.5)"></div> &lt; 1" (Penny–Nickel)</div>
-<div class="legend-row"><div class="legend-dot" style="background:#ffab00;box-shadow:0 0 6px rgba(255,171,0,0.5)"></div> 1"–1.75" (Quarter–Golf)</div>
-<div class="legend-row"><div class="legend-dot" style="background:#C0392B;box-shadow:0 0 6px rgba(192,57,43,0.5)"></div> 1.75"–2.75" (Golf–Tennis)</div>
-<div class="legend-row"><div class="legend-dot" style="background:#ff1744;box-shadow:0 0 8px rgba(255,23,68,0.6)"></div> 2.75"+ (Baseball+)</div>
-</div>
-</div>
-</div>
+</div><!-- end tab-content -->
+</div><!-- end mainApp -->
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
-(function(){
-'use strict';
-
-// ─── Map Init ──────────────────────────────────────────
-const map = L.map('map',{zoomControl:true,attributionControl:false}).setView([38.5,-93.5],5);
-
-// Dark tile layer — CartoDB Dark Matter
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
-  maxZoom:19,subdomains:'abcd'
-}).addTo(map);
-
-// ─── Radar Layers (NEXRAD — same data as RadarScope) ───
-const radarLayers={
-  reflectivity: L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q.cgi',{
-    layers:'nexrad-n0q-900913',transparent:true,format:'image/png',opacity:0.45
-  }),
-  velocity: L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0u.cgi',{
-    layers:'nexrad-n0u-900913',transparent:true,format:'image/png',opacity:0.4
-  }),
-  precip: L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/iowa/mrms_p1h.cgi',{
-    layers:'mrms_p1h',transparent:true,format:'image/png',opacity:0.35
-  })
-};
-const radarState={reflectivity:true,velocity:false,precip:false};
-radarLayers.reflectivity.addTo(map);
-
-window.toggleRadar=function(type){
-  radarState[type]=!radarState[type];
-  if(radarState[type]){radarLayers[type].addTo(map)}else{map.removeLayer(radarLayers[type])}
-  const labels={reflectivity:'NEXRAD Reflectivity',velocity:'Storm Velocity',precip:'Precipitation'};
-  const btn=document.getElementById('btn'+type.charAt(0).toUpperCase()+type.slice(1));
-  if(btn) btn.textContent=labels[type]+': '+(radarState[type]?'ON':'OFF');
-};
-
-// Store markers for filtering
-let allMarkers=[];
-let allReports=[];
-let currentFilter='all';
-
-// ─── Hail marker color by size ─────────────────────────
-function getColor(size){
-  if(size>=2.75) return '#ff1744';
-  if(size>=1.75) return '#C0392B';
-  if(size>=1) return '#ffab00';
-  return '#00e5ff';
-}
-function getRadius(size){
-  if(size>=2.75) return 10;
-  if(size>=1.75) return 8;
-  if(size>=1) return 6;
-  return 5;
-}
-function getSizeClass(size){
-  if(size>=2.75) return 'size-xl';
-  if(size>=1.75) return 'size-lg';
-  if(size>=1) return 'size-md';
-  return 'size-sm';
-}
-function getSizeLabel(size){
-  if(size>=4) return 'Softball';
-  if(size>=2.75) return 'Baseball';
-  if(size>=2) return 'Hen Egg';
-  if(size>=1.75) return 'Golf Ball';
-  if(size>=1.5) return 'Ping Pong';
-  if(size>=1) return 'Quarter';
-  if(size>=0.75) return 'Penny';
-  return 'Pea/Marble';
-}
-
-// ─── Create map marker ─────────────────────────────────
-function createMarker(report){
-  const color=getColor(report.size);
-  const radius=getRadius(report.size);
-  const glow=color.replace(')',',0.4)').replace('rgb','rgba').replace('#','');
-
-  const marker=L.circleMarker([report.lat,report.lon],{
-    radius:radius,fillColor:color,fillOpacity:0.85,
-    color:'rgba(255,255,255,0.3)',weight:1,
-    className:'hail-marker'
-  });
-
-  // Add glow effect for severe
-  if(report.size>=1.75){
-    L.circleMarker([report.lat,report.lon],{
-      radius:radius+6,fillColor:color,fillOpacity:0.15,
-      stroke:false,interactive:false
-    }).addTo(map);
-  }
-
-  // Popup
-  const popupHTML=`
-    <div class="popup-title">${report.location}, ${report.state}</div>
-    <div class="popup-row"><span class="label">Hail Size</span><span class="value" style="color:${color}">${report.size}" — ${getSizeLabel(report.size)}</span></div>
-    <div class="popup-row"><span class="label">County</span><span class="value">${report.county}</span></div>
-    <div class="popup-row"><span class="label">Time</span><span class="value">${report.time} ${report.day==='today'?'Today':'Yesterday'}</span></div>
-    ${report.comments?`<div class="popup-row"><span class="label">Notes</span><span class="value" style="max-width:180px">${report.comments}</span></div>`:''}
-    <div class="popup-row"><span class="label">Coords</span><span class="value">${report.lat.toFixed(3)}, ${report.lon.toFixed(3)}</span></div>
-    <div class="popup-actions">
-      <button class="popup-btn" onclick="addLead('${report.location}','${report.county}','${report.state}')">+ ADD LEAD</button>
-      <button class="popup-btn secondary" onclick="zoomTo(${report.lat},${report.lon})">ZOOM IN</button>
-    </div>`;
-  marker.bindPopup(popupHTML,{maxWidth:280});
-
-  return marker;
-}
-
-// ─── Render storm list in sidebar ──────────────────────
-function renderStormList(reports){
-  const list=document.getElementById('stormList');
-  if(!reports.length){
-    list.innerHTML='<div style="text-align:center;padding:40px;color:var(--hs-muted);font-size:12px">No hail reports matching filter</div>';
-    return;
-  }
-
-  // Sort by size descending
-  const sorted=[...reports].sort((a,b)=>b.size-a.size);
-  list.innerHTML=sorted.map((r,i)=>`
-    <div class="storm-item" data-idx="${i}" onclick="flyToReport(${r.lat},${r.lon})">
-      <div class="storm-item-header">
-        <span class="storm-item-location">${r.location}, ${r.state}</span>
-        <span class="storm-item-size ${getSizeClass(r.size)}">${r.size}"</span>
-      </div>
-      <div class="storm-item-meta">
-        <span>${getSizeLabel(r.size)}</span>
-        <span>${r.county} Co.</span>
-        <span>${r.day==='today'?'Today':'Yesterday'} ${r.time}</span>
-      </div>
-    </div>
-  `).join('');
-}
-
-// ─── Filter logic ──────────────────────────────────────
-function applyFilter(minSize){
-  currentFilter=minSize;
-  allMarkers.forEach(m=>map.removeLayer(m));
-
-  const filtered=minSize==='all'?allReports:allReports.filter(r=>r.size>=parseFloat(minSize));
-  const markers=filtered.map(r=>{
-    const m=createMarker(r);
-    m.addTo(map);
-    return m;
-  });
-  allMarkers=markers;
-  renderStormList(filtered);
-}
-
-// ─── Fetch storm data ──────────────────────────────────
-async function fetchStorms(){
-  try{
-    const res=await fetch('/api/storms');
-    const data=await res.json();
-
-    // Update stats
-    document.getElementById('statReports').textContent=data.summary.totalReports;
-    document.getElementById('statMaxSize').textContent=data.summary.maxHailSize>0?data.summary.maxHailSize.toFixed(2):'0';
-    document.getElementById('statStates').textContent=data.summary.statesAffected;
-    document.getElementById('statAlerts').textContent=data.alerts.length;
-    document.getElementById('chipActive').textContent=data.alerts.length+' active warnings';
-    document.getElementById('chipSevere').textContent=data.reports.filter(r=>r.size>=1.75).length+' severe reports';
-    document.getElementById('mapSubtitle').textContent=data.summary.totalReports+' reports across '+data.summary.statesAffected+' states | SPC/NWS verified data';
-    document.getElementById('lastUpdated').textContent='Updated '+new Date(data.fetchedAt).toLocaleTimeString();
-
-    allReports=data.reports;
-    applyFilter('all');
-
-    // Fit bounds if we have data
-    if(data.reports.length>0){
-      const lats=data.reports.map(r=>r.lat);
-      const lons=data.reports.map(r=>r.lon);
-      map.fitBounds([[Math.min(...lats)-1,Math.min(...lons)-1],[Math.max(...lats)+1,Math.max(...lons)+1]]);
-    }
-
-    // Render alerts panel
-    renderAlerts(data.alerts);
-
-    // Hide loading
-    document.getElementById('loadingOverlay').classList.add('hidden');
-  }catch(err){
-    console.error('Failed to fetch storms:',err);
-    document.getElementById('stormList').innerHTML='<div style="text-align:center;padding:40px;color:var(--hs-red);font-size:12px">Failed to load storm data. Retrying...</div>';
-    document.getElementById('loadingOverlay').classList.add('hidden');
-    setTimeout(fetchStorms,5000);
-  }
-}
-
-// ─── Render alerts in bottom-left panel ────────────────
-function renderAlerts(alerts){
-  const panel=document.getElementById('alertsPanel');
-  if(!alerts||!alerts.length){panel.innerHTML='';return}
-  panel.innerHTML=alerts.slice(0,5).map(a=>{
-    const isSevere=a.severity==='Severe'||a.severity==='Extreme';
-    const color=isSevere?'var(--hs-red)':'var(--hs-amber)';
-    const shareText=encodeURIComponent(a.headline||a.event+' - '+a.areas);
-    const shareUrl=encodeURIComponent('https://missouri-dent-bully.vercel.app/ops/');
-    return `<div class="map-chip" style="border-left:3px solid ${color};flex-direction:column;align-items:flex-start;gap:4px;max-width:340px">
-      <div style="font-weight:700;font-size:11px;color:${color}">${a.event}</div>
-      <div style="font-size:10px;color:var(--hs-muted);line-height:1.4">${(a.areas||'').substring(0,120)}</div>
-      <div style="display:flex;gap:6px;margin-top:2px">
-        <a href="https://twitter.com/intent/tweet?text=${shareText}&url=${shareUrl}" target="_blank" style="font-size:9px;color:var(--hs-cyan);text-transform:uppercase;letter-spacing:0.5px">Share X</a>
-        <a href="https://www.facebook.com/sharer/sharer.php?u=${shareUrl}&quote=${shareText}" target="_blank" style="font-size:9px;color:var(--hs-cyan);text-transform:uppercase;letter-spacing:0.5px">Share FB</a>
-        <a href="sms:?body=${shareText}%20${shareUrl}" style="font-size:9px;color:var(--hs-cyan);text-transform:uppercase;letter-spacing:0.5px">Text</a>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-// ─── Global functions for popups ───────────────────────
-window.flyToReport=function(lat,lon){map.flyTo([lat,lon],12,{duration:1})};
-window.zoomTo=function(lat,lon){map.flyTo([lat,lon],14,{duration:0.8})};
-window.addLead=function(location,county,state){
-  const lead={location,county,state,timestamp:new Date().toISOString(),status:'new'};
-  const leads=JSON.parse(localStorage.getItem('hs-leads')||'[]');
-  leads.push(lead);
-  localStorage.setItem('hs-leads',JSON.stringify(leads));
-  alert('Lead added: '+location+', '+state);
-};
-window.shareAlert=function(text){
-  if(navigator.share){navigator.share({title:'HailStrike Ops Alert',text:text,url:window.location.href})}
-  else{navigator.clipboard.writeText(text+' '+window.location.href);alert('Copied to clipboard!')}
-};
-
-// ─── Filter button handlers ────────────────────────────
-document.querySelectorAll('.filter-btn').forEach(btn=>{
-  btn.addEventListener('click',function(){
-    document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
-    this.classList.add('active');
-    applyFilter(this.dataset.filter);
-  });
-});
-
-// ─── Init ──────────────────────────────────────────────
-// Clear loading screen after 8s max regardless
-setTimeout(function(){document.getElementById('loadingOverlay').classList.add('hidden')},8000);
-fetchStorms();
-// Refresh every 5 minutes
-setInterval(fetchStorms,5*60*1000);
-
-})();
-</script>
+<script src="/ops/app.js"></script>
 </body>
 </html>
