@@ -6,6 +6,7 @@
     { "source": "/api/leads", "destination": "/api/leads" },
     { "source": "/api/storms", "destination": "/api/storms" },
     { "source": "/api/radar", "destination": "/api/radar" },
-    { "source": "/api/demographics", "destination": "/api/demographics" }
+    { "source": "/api/demographics", "destination": "/api/demographics" },
+    { "source": "/api/outreach", "destination": "/api/outreach" }
   ]
 }
