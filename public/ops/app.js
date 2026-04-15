@@ -53,17 +53,12 @@ function initMap(){
     tap:true,minZoom:4,maxZoom:18
   }).setView([38.5,-92.5],7); // Zoomed into Missouri by default
 
-  // Street-level map with labels, cities, neighborhoods — NOT dark tiles
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png',{
-    maxZoom:19,subdomains:'abcd'
+  // Clean bright map — OpenStreetMap standard with full detail
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    maxZoom:19
   }).addTo(map);
 
-  // State/county boundary overlay for clarity
-  L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/toner-lines/{z}/{x}/{y}{r}.png',{
-    maxZoom:19,subdomains:'abcd',opacity:0.15
-  }).addTo(map);
-
-  layers.ref=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q.cgi',{layers:'nexrad-n0q-900913',transparent:true,format:'image/png',opacity:0.35}).addTo(map);
+  layers.ref=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q.cgi',{layers:'nexrad-n0q-900913',transparent:true,format:'image/png',opacity:0.55}).addTo(map);
   layers.vel=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0u.cgi',{layers:'nexrad-n0u-900913',transparent:true,format:'image/png',opacity:0.35});
   layers.pre=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/iowa/mrms_p1h.cgi',{layers:'mrms_p1h',transparent:true,format:'image/png',opacity:0.3});
 }
