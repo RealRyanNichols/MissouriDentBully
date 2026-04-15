@@ -63,30 +63,82 @@ function initMap(){
     layers:'nexrad-n0q-900913',transparent:true,format:'image/png',opacity:0.55
   }).addTo(map);
 
-  // MESH — Maximum Estimated Size of Hail via MRMS composite
-  // Using NOAA's RIDGE2 radar overlay which includes hail detection products
-  layers.mesh=L.tileLayer.wms('https://opengeo.ncep.noaa.gov/geoserver/conus/conus_cref_qcd/ows',{
-    service:'WMS',version:'1.1.1',layers:'conus_cref_qcd',transparent:true,format:'image/png',opacity:0.5,
-    crs:L.CRS.EPSG4326
-  });
+  // MESH swath — built from SPC spotter reports
+  // We draw approximate hail paths by connecting nearby reports in time order
+  // This creates a visual swath similar to MESH radar products
+  layers.mesh=null; // Generated from report data, not a tile layer
 }
 
+var meshSwathLayers=[];
+
 window.toggleLayer=function(id){
-  if(!layers[id]){console.error('Layer not found:',id);return}
-  try{
-    layerState[id]=!layerState[id];
-    if(layerState[id]){
-      layers[id].addTo(map);
-    } else {
-      map.removeLayer(layers[id]);
-    }
-  }catch(e){console.error('Toggle layer error:',e)}
-  // Update button state
-  var btnMap={ref:'btnRef',mesh:'btnMesh'};
-  var btn=document.getElementById(btnMap[id]);
-  if(btn){
-    btn.classList.toggle('active',layerState[id]);
+  layerState[id]=!layerState[id];
+  var btn=document.getElementById(id==='ref'?'btnRef':'btnMesh');
+
+  if(id==='ref'){
+    try{
+      if(layerState.ref) layers.ref.addTo(map);
+      else map.removeLayer(layers.ref);
+    }catch(e){}
   }
+
+  if(id==='mesh'){
+    if(layerState.mesh){
+      drawHailSwaths(allReports);
+    } else {
+      meshSwathLayers.forEach(function(l){map.removeLayer(l)});
+      meshSwathLayers=[];
+    }
+  }
+
+  if(btn) btn.classList.toggle('active',layerState[id]);
+};
+
+// Draw hail swaths from SPC reports — connect reports to show storm paths
+function drawHailSwaths(reports){
+  // Clear old swaths
+  meshSwathLayers.forEach(function(l){map.removeLayer(l)});
+  meshSwathLayers=[];
+  if(!reports.length) return;
+
+  // Group reports by state+county (storms track through counties)
+  var groups={};
+  reports.forEach(function(r){
+    var key=r.state;
+    if(!groups[key]) groups[key]=[];
+    groups[key].push(r);
+  });
+
+  // For each group, sort by time and draw a path with width based on hail size
+  Object.keys(groups).forEach(function(key){
+    var reps=groups[key].sort(function(a,b){
+      return (a.time||'').localeCompare(b.time||'');
+    });
+
+    // Draw circles around each report to simulate swath coverage
+    reps.forEach(function(r){
+      // Swath radius: bigger hail = wider swath (in meters)
+      var radiusM=r.size>=2.75?8000:r.size>=1.75?6000:r.size>=1?4000:2500;
+      var color=r.size>=2.75?'#ff1744':r.size>=1.75?'#ff6600':r.size>=1?'#ffcc00':'#ffe082';
+
+      var circle=L.circle([r.lat,r.lon],{
+        radius:radiusM,fillColor:color,fillOpacity:0.25,
+        color:color,weight:1,opacity:0.4
+      });
+      circle.addTo(map);
+      meshSwathLayers.push(circle);
+    });
+
+    // Connect reports with lines to show storm path
+    if(reps.length>=2){
+      var pathCoords=reps.map(function(r){return[r.lat,r.lon]});
+      var pathLine=L.polyline(pathCoords,{
+        color:'#C0392B',weight:3,opacity:0.6,dashArray:'8,6'
+      });
+      pathLine.addTo(map);
+      meshSwathLayers.push(pathLine);
+    }
+  });
 };
 
 // ─── Tabs ─────────────────────────────────────────────
