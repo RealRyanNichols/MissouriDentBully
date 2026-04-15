@@ -208,7 +208,7 @@ a{color:var(--hs-cyan);text-decoration:none}
 'use strict';
 
 // ─── Map Init ──────────────────────────────────────────
-const map = L.map('map',{zoomControl:true,attributionControl:false}).setView([38.5,−93.5],5);
+const map = L.map('map',{zoomControl:true,attributionControl:false}).setView([38.5,-93.5],5);
 
 // Dark tile layer — CartoDB Dark Matter
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
@@ -389,6 +389,8 @@ document.querySelectorAll('.filter-btn').forEach(btn=>{
 });
 
 // ─── Init ──────────────────────────────────────────────
+// Clear loading screen after 8s max regardless
+setTimeout(function(){document.getElementById('loadingOverlay').classList.add('hidden')},8000);
 fetchStorms();
 // Refresh every 5 minutes
 setInterval(fetchStorms,5*60*1000);
