@@ -195,23 +195,26 @@ function renderMap(reports){
       if(r.size>=1.75) L.circleMarker([r.lat,r.lon],{radius:radius+5,fillColor:color,fillOpacity:0.12,stroke:false,interactive:false}).addTo(map);
 
       var demo=getCountyDemo(r.county,r.state);
-      var impact=estimateImpact(demo,r.size);
+
+      // Convert UTC time to Central
+      var localTime=utcToCentral(r.time);
 
       var popup='<div style="min-width:220px">'+
         '<b style="font-size:14px">'+r.location+', '+r.state+'</b><br>'+
         '<div style="margin:6px 0;padding:6px 0;border-top:1px solid #2a2a3e;border-bottom:1px solid #2a2a3e">'+
           '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Hail Size</span><b style="color:'+color+'">'+r.size+'" — '+r.sizeLabel+'</b></div>'+
           '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">County</span><b>'+r.county+'</b></div>'+
-          '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Time</span><b>'+r.time+' '+(r.day==='today'?'Today':'Yesterday')+'</b></div>'+
+          '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Time</span><b>'+localTime+' CT '+(r.day==='today'?'Today':'Yesterday')+'</b></div>'+
+          '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Source</span><b>NWS/SPC Verified</b></div>'+
         '</div>'+
         '<div style="margin:6px 0;padding:6px 0;border-bottom:1px solid #2a2a3e">'+
-          '<div style="font-size:10px;color:#C0392B;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-weight:700">Estimated Impact</div>'+
-          '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Vehicles Affected</span><b style="color:#00e5ff">~'+impact.vehicles+'</b></div>'+
-          '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Houses Affected</span><b style="color:#ffab00">~'+impact.houses+'</b></div>'+
-          '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Median Income</span><b>'+impact.income+'</b></div>'+
-          '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Median Home Value</span><b>'+impact.homeValue+'</b></div>'+
-          '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Est. People Affected</span><b>'+impact.pop+'</b></div>'+
-          '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">County Population</span><b>'+impact.totalPop+'</b></div>'+
+          '<div style="font-size:10px;color:#C0392B;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-weight:700">County Demographics (Census)</div>'+
+          (demo?
+            '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">County Population</span><b>'+(demo.population||0).toLocaleString()+'</b></div>'+
+            '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Median Income</span><b>$'+((demo.medianIncome||0)/1000).toFixed(0)+'k</b></div>'+
+            '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Median Home Value</span><b>$'+((demo.medianHomeValue||0)/1000).toFixed(0)+'k</b></div>'+
+            '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Housing Units</span><b>'+(demo.totalHousingUnits||0).toLocaleString()+'</b></div>'
+          :'<div style="color:#6a6a8a;font-size:11px">Demographics loading...</div>')+
         '</div>'+
         (r.comments?'<div style="font-style:italic;color:#888;font-size:11px;margin:4px 0">'+r.comments+'</div>':'')+
         '<button class="card-btn red" style="margin-top:6px;width:100%" onclick="addLeadFromMap(\''+r.location+'\',\''+r.county+'\',\''+r.state+'\')">+ ADD LEAD</button>'+
@@ -234,7 +237,7 @@ function renderReports(reports){
     var bc=r.size>=2.75?'badge-hotred':r.size>=1.75?'badge-red':r.size>=1?'badge-amber':'badge-cyan';
     return '<div class="data-card" onclick="flyTo('+r.lat+','+r.lon+')">'+
       '<div class="card-head"><span class="card-title">'+r.location+', '+r.state+'</span><span class="card-badge '+bc+'">'+r.size+'" '+r.sizeLabel+'</span></div>'+
-      '<div class="card-meta"><span>'+r.county+' Co.</span><span>'+r.time+' '+(r.day==='today'?'Today':'Yest.')+'</span><span>'+r.damageLevel+'</span></div>'+
+      '<div class="card-meta"><span>'+r.county+' Co.</span><span>'+utcToCentral(r.time)+' CT '+(r.day==='today'?'Today':'Yest.')+'</span><span>'+r.damageLevel+'</span></div>'+
       (r.comments?'<div class="card-meta" style="margin-top:4px"><span style="color:#888">'+r.comments+'</span></div>':'')+
     '</div>';
   }).join('');
@@ -485,5 +488,20 @@ window.shareNative=function(text){
   else{copyText(text+' '+window.location.href)}
 };
 function debounce(fn,ms){var t;return function(){clearTimeout(t);t=setTimeout(fn,ms)}}
+
+// Convert SPC UTC time (e.g. "2220") to Central Time
+function utcToCentral(utcStr){
+  if(!utcStr||utcStr.length<4) return utcStr;
+  var h=parseInt(utcStr.substring(0,2));
+  var m=utcStr.substring(2,4);
+  // CDT is UTC-5, CST is UTC-6. Use -5 for Apr-Oct (daylight saving)
+  var month=new Date().getMonth(); // 0-11
+  var offset=(month>=2&&month<=10)?5:6; // CDT Mar-Oct, CST Nov-Feb
+  h=h-offset;
+  if(h<0) h+=24;
+  var ampm=h>=12?'PM':'AM';
+  var h12=h%12;if(h12===0)h12=12;
+  return h12+':'+m+' '+ampm;
+}
 
 })();
