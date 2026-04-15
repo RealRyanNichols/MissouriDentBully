@@ -267,11 +267,11 @@ function renderAlerts(alerts){
       '<div class="alert-area">'+a.areas+'</div>'+
       '<div class="alert-desc">'+((a.description||'').substring(0,200))+'</div>'+
       '<div class="card-actions">'+
-        '<a class="card-btn" href="https://twitter.com/intent/tweet?text='+shareText+'" target="_blank">\u{1D54F} Post to X</a>'+
-        '<a class="card-btn" href="https://www.facebook.com/sharer/sharer.php?quote='+shareText+'" target="_blank">\uD83D\uDCF1 Facebook</a>'+
-        '<a class="card-btn" href="sms:?body='+shareText+'">\\uD83D\\uDCF2 Text</a>'+
-        '<a class="card-btn" href="mailto:?subject=Storm%20Alert&body='+shareText+'">\\u2709 Email</a>'+
-        '<button class="card-btn" onclick="shareNative(\''+((a.headline||'').replace(/'/g,''))+'\')">\\uD83D\\uDD17 Share</button>'+
+        '<a class="card-btn" href="https://twitter.com/intent/tweet?text='+shareText+'" target="_blank">X / Twitter</a>'+
+        '<a class="card-btn" href="https://www.facebook.com/sharer/sharer.php?quote='+shareText+'" target="_blank">Facebook</a>'+
+        '<a class="card-btn" href="sms:?body='+shareText+'">Text</a>'+
+        '<a class="card-btn" href="mailto:?subject=Storm%20Alert&body='+shareText+'">Email</a>'+
+        '<button class="card-btn" onclick="shareNative(\''+((a.headline||'').replace(/'/g,''))+'\')">Share</button>'+
       '</div></div>';
   }).join('');
 }
