@@ -11,6 +11,7 @@
     { "source": "/api/scout", "destination": "/api/scout" },
     { "source": "/api/facebook", "destination": "/api/facebook" },
     { "source": "/api/history", "destination": "/api/history" },
-    { "source": "/api/businesses", "destination": "/api/businesses" }
+    { "source": "/api/businesses", "destination": "/api/businesses" },
+    { "source": "/api/mesh", "destination": "/api/mesh" }
   ]
 }

@@ -84,7 +84,7 @@ window.toggleLayer=function(id){
 
   if(id==='mesh'){
     if(layerState.mesh){
-      drawHailSwaths(allReports);
+      loadMESHData();
     } else {
       meshSwathLayers.forEach(function(l){map.removeLayer(l)});
       meshSwathLayers=[];
@@ -94,7 +94,55 @@ window.toggleLayer=function(id){
   if(btn) btn.classList.toggle('active',layerState[id]);
 };
 
-// Draw hail swaths from SPC reports — connect reports to show storm paths
+// Load real MESH data from NEXRAD Level III
+function loadMESHData(){
+  meshSwathLayers.forEach(function(l){map.removeLayer(l)});
+  meshSwathLayers=[];
+  document.getElementById('statusText').textContent='Loading MESH radar data...';
+
+  // Fetch from multiple Missouri-area radar stations
+  var stations=['EAX','LSX','SGF'];
+  var fetches=stations.map(function(st){
+    return fetch('/api/mesh?station='+st+'&hours=3').then(function(r){return r.json()}).catch(function(){return{meshCells:[]}});
+  });
+
+  Promise.all(fetches).then(function(results){
+    var totalCells=0;
+    results.forEach(function(data){
+      (data.meshCells||[]).forEach(function(cell){
+        if(cell.coords&&cell.coords.length>=2){
+          totalCells++;
+          var color=cell.meshValue>=2.75?'#ff0000':cell.meshValue>=1.75?'#ff6600':cell.meshValue>=1?'#ffcc00':'#ffe082';
+          var fillOpacity=cell.meshValue>=1.75?0.35:0.2;
+
+          // Draw polygon from coordinates
+          try{
+            var poly=L.polygon(cell.coords,{
+              color:color,fillColor:color,fillOpacity:fillOpacity,
+              weight:1,opacity:0.5
+            });
+            poly.bindPopup('<b>MESH: '+cell.meshValue+'" — '+cell.meshLabel+'</b><br>Station: '+cell.station+'<br>Source: NEXRAD Level III');
+            poly.addTo(map);
+            meshSwathLayers.push(poly);
+          }catch(e){}
+        }
+      });
+    });
+
+    // If no MESH cells found, fall back to SPC report swaths
+    if(totalCells===0){
+      drawHailSwaths(allReports);
+      document.getElementById('statusText').textContent='MESH: No radar hail detected — showing spotter reports';
+    } else {
+      document.getElementById('statusText').textContent='MESH: '+totalCells+' radar hail cells from NEXRAD';
+    }
+  }).catch(function(){
+    drawHailSwaths(allReports);
+    document.getElementById('statusText').textContent='MESH unavailable — showing spotter swaths';
+  });
+}
+
+// Fallback: Draw hail swaths from SPC reports
 function drawHailSwaths(reports){
   // Clear old swaths
   meshSwathLayers.forEach(function(l){map.removeLayer(l)});
