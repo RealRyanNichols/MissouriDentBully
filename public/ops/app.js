@@ -99,6 +99,7 @@ function initTabs(){
       t.classList.add('active');
       document.getElementById('panel-'+t.dataset.tab).classList.add('active');
       if(t.dataset.tab==='map') setTimeout(function(){map.invalidateSize()},100);
+      if(t.dataset.tab==='social') loadFacebook();
     });
   });
 }
@@ -529,6 +530,140 @@ function loadTemplates(){
   }).catch(function(){});
 }
 window.sendBlast=function(){alert('SMS blast requires Twilio integration. Add TWILIO_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE to Vercel env vars.')};
+
+// ─── Facebook Integration ─────────────────────────────
+var fbConnected=false;
+var fbReplyRecipient='';
+
+function loadFacebook(){
+  fetch('/api/facebook').then(function(r){return r.json()}).then(function(data){
+    fbConnected=data.configured;
+    var el=document.getElementById('fbStatus');
+    if(!data.configured){
+      el.innerHTML='<div class="data-card" style="border-left:3px solid var(--amber)">'+
+        '<div class="card-title" style="color:var(--amber)">Facebook Not Connected</div>'+
+        '<div class="card-meta" style="flex-direction:column;gap:4px;margin-top:8px">'+
+        '<span>1. Go to developers.facebook.com — create or use existing app</span>'+
+        '<span>2. Add Pages API product</span>'+
+        '<span>3. Generate Page Access Token with permissions</span>'+
+        '<span>4. Add to Vercel env vars: FACEBOOK_PAGE_TOKEN, FACEBOOK_PAGE_ID</span>'+
+        '</div></div>';
+      document.getElementById('fbPostsList').innerHTML='';
+      document.getElementById('fbMessagesList').innerHTML='';
+      return;
+    }
+    el.innerHTML='<div class="data-card" style="border-left:3px solid var(--green)"><div class="card-title" style="color:var(--green)">Facebook Connected</div></div>';
+    loadFBPosts();
+    loadFBMessages();
+  }).catch(function(){});
+}
+
+function loadFBPosts(){
+  if(!fbConnected) return;
+  fetch('/api/facebook?action=posts').then(function(r){return r.json()}).then(function(data){
+    var el=document.getElementById('fbPostsList');
+    var posts=data.posts||[];
+    if(!posts.length){el.innerHTML='<div class="data-card"><div class="card-title" style="color:var(--muted)">No recent posts</div></div>';return}
+    el.innerHTML=posts.map(function(p){
+      var likes=p.likes&&p.likes.summary?p.likes.summary.total_count:0;
+      var comments=p.comments&&p.comments.summary?p.comments.summary.total_count:0;
+      var shares=p.shares?p.shares.count:0;
+      var date=new Date(p.created_time).toLocaleDateString();
+      return '<div class="data-card">'+
+        '<div class="card-meta" style="margin-bottom:6px"><span>'+date+'</span><span>'+likes+' likes</span><span>'+comments+' comments</span><span>'+shares+' shares</span></div>'+
+        '<div style="font-size:13px;color:var(--white);line-height:1.5">'+((p.message||'').substring(0,200))+'</div>'+
+        '<div class="card-actions">'+
+          (p.permalink_url?'<a class="card-btn" href="'+p.permalink_url+'" target="_blank">View</a>':'')+
+          '<button class="card-btn" onclick="loadComments(\''+p.id+'\')">Comments</button>'+
+        '</div></div>';
+    }).join('');
+  }).catch(function(){});
+}
+
+function loadFBMessages(){
+  if(!fbConnected) return;
+  fetch('/api/facebook?action=messages').then(function(r){return r.json()}).then(function(data){
+    var el=document.getElementById('fbMessagesList');
+    var convos=data.conversations||[];
+    if(!convos.length){el.innerHTML='<div class="data-card"><div class="card-title" style="color:var(--muted)">No messages</div></div>';return}
+    el.innerHTML=convos.map(function(c){
+      var who=c.participants&&c.participants.data?c.participants.data.map(function(p){return p.name}).join(', '):'Unknown';
+      var date=new Date(c.updated_time).toLocaleString();
+      return '<div class="data-card">'+
+        '<div class="card-head"><span class="card-title">'+who+'</span><span class="card-badge badge-cyan">'+c.message_count+' msgs</span></div>'+
+        '<div style="font-size:12px;color:#999;margin:4px 0">'+((c.snippet||'').substring(0,100))+'</div>'+
+        '<div class="card-meta"><span>'+date+'</span></div>'+
+        '<div class="card-actions">'+
+          '<button class="card-btn red" onclick="openReply(\''+c.id+'\',\''+who.replace(/'/g,'')+'\')">Reply</button>'+
+          '<button class="card-btn" onclick="viewThread(\''+c.id+'\')">View Thread</button>'+
+        '</div></div>';
+    }).join('');
+  }).catch(function(){});
+}
+
+window.fbCreatePost=function(){
+  var msg=document.getElementById('fbPostText').value.trim();
+  var link=document.getElementById('fbPostLink').value.trim();
+  if(!msg){alert('Write something first');return}
+  fetch('/api/facebook',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({type:'post',message:msg,link:link||undefined})
+  }).then(function(r){return r.json()}).then(function(data){
+    if(data.success){alert('Posted to Facebook!');document.getElementById('fbPostText').value='';document.getElementById('fbPostLink').value='';loadFBPosts()}
+    else{alert('Post failed: '+(data.post&&data.post.error?data.post.error.message:'Unknown error'))}
+  }).catch(function(){alert('Failed to post')});
+};
+
+window.fbQuickStormPost=function(){
+  var topReport=allReports[0];
+  var msg='';
+  if(topReport){
+    msg='HAIL ALERT: '+topReport.size+'" hail ('+topReport.sizeLabel+') reported near '+topReport.location+', '+topReport.state+'.\n\n'+
+      'If your vehicle was in this area, it likely has hail damage. Missouri Dent Bully offers FREE hail damage inspections.\n\n'+
+      'We fix dents WITHOUT repainting — factory finish preserved. Insurance accepted, zero hassle.\n\n'+
+      'Call/text Jason: 636-385-2928\ndentbullyusa.com';
+  } else {
+    msg='Storm season is here! If your vehicle has hail damage, Missouri Dent Bully offers FREE estimates.\n\n'+
+      'Paintless Dent Repair — no repainting, same-day service. 30+ years experience.\n\nCall/text: 636-385-2928';
+  }
+  document.getElementById('fbPostText').value=msg;
+};
+
+window.openReply=function(threadId,name){
+  fbReplyRecipient=threadId;
+  document.getElementById('fbReplyTo').textContent='Reply to '+name;
+  document.getElementById('fbReplyForm').style.display='block';
+  document.getElementById('fbReplyText').value='';
+  document.getElementById('fbReplyText').focus();
+};
+
+window.fbSendReply=function(){
+  var msg=document.getElementById('fbReplyText').value.trim();
+  if(!msg||!fbReplyRecipient){alert('Type a message');return}
+  fetch('/api/facebook',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({type:'send_message',recipient_id:fbReplyRecipient,message:msg})
+  }).then(function(r){return r.json()}).then(function(data){
+    if(data.success){alert('Reply sent!');document.getElementById('fbReplyForm').style.display='none';loadFBMessages()}
+    else{alert('Reply failed')}
+  }).catch(function(){alert('Failed to send')});
+};
+
+window.loadComments=function(postId){
+  fetch('/api/facebook?action=comments&post_id='+postId).then(function(r){return r.json()}).then(function(data){
+    var comments=data.comments||[];
+    if(!comments.length){alert('No comments on this post');return}
+    var text=comments.map(function(c){return(c.from?c.from.name:'Unknown')+': '+c.message}).join('\n\n');
+    alert('Comments:\n\n'+text);
+  }).catch(function(){});
+};
+
+window.viewThread=function(threadId){
+  fetch('/api/facebook?action=thread&thread_id='+threadId).then(function(r){return r.json()}).then(function(data){
+    var msgs=data.messages||[];
+    if(!msgs.length){alert('No messages');return}
+    var text=msgs.reverse().map(function(m){return(m.from?m.from.name:'Unknown')+': '+m.message}).join('\n\n');
+    alert('Thread:\n\n'+text);
+  }).catch(function(){});
+};
 
 // ─── Helpers ──────────────────────────────────────────
 function filterReports(){

@@ -74,6 +74,7 @@
 <button class="tab" data-tab="scout">Scout</button>
 <button class="tab" data-tab="alerts">Alerts</button>
 <button class="tab" data-tab="leads">Leads</button>
+<button class="tab" data-tab="social">Social</button>
 <button class="tab" data-tab="outreach">Outreach</button>
 </nav>
 
@@ -215,6 +216,42 @@
 <div style="display:flex;gap:8px;margin-top:4px">
 <button class="action-btn" onclick="saveLead()">SAVE</button>
 <button class="action-btn secondary" onclick="hideAddLead()">CANCEL</button>
+</div>
+</div>
+</div>
+
+<!-- SOCIAL TAB -->
+<div class="tab-panel" id="panel-social">
+<div id="fbStatus"></div>
+
+<!-- Quick Post -->
+<div class="section-head">Quick Post to Facebook</div>
+<p class="section-sub">Post storm alerts or promos directly to the Missouri Dent Bully page.</p>
+<div class="form-card" id="fbPostForm">
+<textarea id="fbPostText" rows="3" placeholder="Write a post for the Missouri Dent Bully page..."></textarea>
+<input type="text" id="fbPostLink" placeholder="Link URL (optional)">
+<div style="display:flex;gap:8px">
+<button class="action-btn" onclick="fbCreatePost()">POST TO FACEBOOK</button>
+<button class="action-btn secondary" onclick="fbQuickStormPost()">QUICK STORM POST</button>
+</div>
+</div>
+
+<!-- Recent Posts -->
+<div class="section-head">Recent Page Posts</div>
+<div id="fbPostsList" class="card-list">Loading...</div>
+
+<!-- Messages -->
+<div class="section-head" style="margin-top:16px">Messenger Inbox</div>
+<p class="section-sub">Recent conversations from the Missouri Dent Bully page.</p>
+<div id="fbMessagesList" class="card-list">Loading...</div>
+
+<!-- Reply to message -->
+<div id="fbReplyForm" style="display:none" class="form-card">
+<div class="form-title" id="fbReplyTo">Reply to...</div>
+<textarea id="fbReplyText" rows="2" placeholder="Type your reply..."></textarea>
+<div style="display:flex;gap:8px">
+<button class="action-btn" onclick="fbSendReply()">SEND REPLY</button>
+<button class="action-btn secondary" onclick="document.getElementById('fbReplyForm').style.display='none'">CANCEL</button>
 </div>
 </div>
 </div>

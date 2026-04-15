@@ -8,6 +8,7 @@
     { "source": "/api/radar", "destination": "/api/radar" },
     { "source": "/api/demographics", "destination": "/api/demographics" },
     { "source": "/api/outreach", "destination": "/api/outreach" },
-    { "source": "/api/scout", "destination": "/api/scout" }
+    { "source": "/api/scout", "destination": "/api/scout" },
+    { "source": "/api/facebook", "destination": "/api/facebook" }
   ]
 }
