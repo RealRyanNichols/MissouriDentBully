@@ -1,17 +1,20 @@
 const https = require('https');
 
-// NEXRAD Level III Digital MESH (NMD) parser
-// Product code 141 — Maximum Estimated Size of Hail
-// Data from NOAA AWS S3: unidata-nexrad-level3
-
 const S3_BUCKET = 'https://unidata-nexrad-level3.s3.amazonaws.com';
 
-// Missouri + surrounding state radar stations
-const STATIONS = ['EAX','LSX','SGF','ICT','TOP','OAX','DVN','ILX','LSX','PAH','LZK','TSA','INX'];
+// Radar stations covering Missouri + surrounding states
+const STATION_LOCS = {
+  EAX: [38.810, -94.264], LSX: [38.699, -90.683], SGF: [37.236, -93.400],
+  ICT: [37.654, -97.443], TOP: [39.067, -95.627], OAX: [41.320, -96.367],
+  DVN: [41.612, -90.581], ILX: [40.151, -89.337], PAH: [37.069, -88.772],
+  LZK: [34.836, -92.262], TSA: [36.131, -95.976], INX: [36.175, -95.564],
+  IWX: [41.359, -85.700], IND: [39.708, -86.280], LOT: [41.604, -88.085]
+};
 
 function fetchBinary(url) {
   return new Promise((resolve, reject) => {
     https.get(url, (res) => {
+      if (res.statusCode !== 200) { reject(new Error('HTTP ' + res.statusCode)); return; }
       const chunks = [];
       res.on('data', c => chunks.push(c));
       res.on('end', () => resolve(Buffer.concat(chunks)));
@@ -27,115 +30,17 @@ function fetchText(url) {
   });
 }
 
-// Radar station locations (lat, lon)
-const STATION_LOCS = {
-  EAX: [38.810, -94.264], LSX: [38.699, -90.683], SGF: [37.236, -93.400],
-  ICT: [37.654, -97.443], TOP: [39.067, -95.627], OAX: [41.320, -96.367],
-  DVN: [41.612, -90.581], ILX: [40.151, -89.337], PAH: [37.069, -88.772],
-  LZK: [34.836, -92.262], TSA: [36.131, -95.976], INX: [36.175, -95.564]
-};
-
-// Parse NEXRAD Level III product header and extract radial/raster data
-function parseNMD(buffer, stationId) {
-  if (buffer.length < 150) return null; // Empty product, no data
-
-  const results = [];
-  const stationLoc = STATION_LOCS[stationId];
-  if (!stationLoc) return null;
-
-  try {
-    // Skip WMO header — find the start of the product (byte 0x00 after headers)
-    let offset = 0;
-    // Find end of text headers (look for \r\r\n pattern followed by binary)
-    for (let i = 0; i < Math.min(30, buffer.length - 2); i++) {
-      if (buffer[i] === 0x0d && buffer[i + 1] === 0x0d && buffer[i + 2] === 0x0a) {
-        offset = i + 3;
-      }
-    }
-
-    // Skip second header line if present
-    for (let i = offset; i < Math.min(offset + 20, buffer.length - 2); i++) {
-      if (buffer[i] === 0x0d && buffer[i + 1] === 0x0d && buffer[i + 2] === 0x0a) {
-        offset = i + 3;
-        break;
-      }
-    }
-
-    // Now at the Message Header Block
-    // Bytes 0-1: Message Code (should be 141 for NMD)
-    if (offset + 100 > buffer.length) return null;
-
-    // Product description block starts at offset
-    // We need to find the Graphic Alphanumeric section which contains
-    // the MESH contour vectors
-
-    // Parse the product looking for coordinate data
-    // NMD uses Geographic Coordinates in the data
-    // The product contains Storm Cell ID, MESH value, and polygon vertices
-
-    // Scan for storm cell data patterns
-    // Look for sequences that match coordinate pairs
-    const meshCells = [];
-    let i = offset;
-
-    while (i < buffer.length - 20) {
-      // Look for what appears to be MESH value strings (3 digit numbers in ASCII)
-      if (buffer[i] >= 0x30 && buffer[i] <= 0x39 &&
-          buffer[i+1] >= 0x30 && buffer[i+1] <= 0x39 &&
-          buffer[i+2] >= 0x30 && buffer[i+2] <= 0x39 &&
-          buffer[i+3] === 0x20) {
-        // Found a 3-digit number followed by space — likely MESH value
-        const meshStr = String.fromCharCode(buffer[i], buffer[i+1], buffer[i+2]);
-        const meshValue = parseInt(meshStr);
-
-        // MESH values are in hundredths of inches
-        // e.g., 175 = 1.75 inches, 312 = 3.12 inches
-        if (meshValue > 0 && meshValue < 999) {
-          const meshInches = meshValue / 100;
-
-          // Look backwards for coordinate data
-          // Coordinates in NMD are stored as 2-byte signed integers
-          // representing 1/10 degree offsets from radar location
-          // Search nearby bytes for coordinate pairs
-          let searchStart = Math.max(offset, i - 60);
-          const coords = [];
-
-          for (let j = searchStart; j < i; j += 2) {
-            if (j + 3 < buffer.length) {
-              const x = buffer.readInt16BE(j);
-              const y = buffer.readInt16BE(j + 2);
-              // Check if these look like reasonable coordinate offsets
-              // Values should be within ~250km of radar
-              if (Math.abs(x) < 2500 && Math.abs(y) < 2500 && (Math.abs(x) > 10 || Math.abs(y) > 10)) {
-                // Convert from 1/10 km offset to lat/lon
-                const lat = stationLoc[0] + (y / 10) / 111.32;
-                const lon = stationLoc[1] + (x / 10) / (111.32 * Math.cos(stationLoc[0] * Math.PI / 180));
-                // Sanity check — should be within ~300 miles of radar
-                if (Math.abs(lat - stationLoc[0]) < 4 && Math.abs(lon - stationLoc[1]) < 5) {
-                  coords.push([lat, lon]);
-                }
-              }
-            }
-          }
-
-          if (coords.length >= 2) {
-            meshCells.push({
-              meshValue: meshInches,
-              meshLabel: getMeshLabel(meshInches),
-              coords: coords,
-              station: stationId
-            });
-          }
-        }
-      }
-      i++;
-    }
-
-    return meshCells;
-  } catch (e) {
-    console.error('NMD parse error:', e.message);
-    return null;
-  }
+// Convert azimuth (degrees) + range (nautical miles) to lat/lon
+function azRanToLatLon(azDeg, rangeNM, radarLat, radarLon) {
+  const rangeKM = rangeNM * 1.852;
+  const azRad = azDeg * Math.PI / 180;
+  const R = 6371;
+  const lat1 = radarLat * Math.PI / 180;
+  const lon1 = radarLon * Math.PI / 180;
+  const d = rangeKM / R;
+  const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(azRad));
+  const lon2 = lon1 + Math.atan2(Math.sin(azRad) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
+  return [lat2 * 180 / Math.PI, lon2 * 180 / Math.PI];
 }
 
 function getMeshLabel(inches) {
@@ -148,74 +53,204 @@ function getMeshLabel(inches) {
   return 'Small';
 }
 
+// Parse NEXRAD Level III NMD (Product 141) binary file
+function parseNMD(buf, stationId) {
+  if (buf.length < 200) return []; // Too small = no data
+
+  const radarLoc = STATION_LOCS[stationId];
+  if (!radarLoc) return [];
+
+  try {
+    // Find binary data start (skip WMO text headers)
+    let msgStart = 0;
+    for (let i = 0; i < 40; i++) {
+      if (buf[i] === 0x0d && buf[i + 1] === 0x0d && buf[i + 2] === 0x0a) {
+        msgStart = i + 3;
+      }
+    }
+    for (let i = msgStart; i < msgStart + 20 && i < buf.length - 2; i++) {
+      if (buf[i] === 0x0d && buf[i + 1] === 0x0d && buf[i + 2] === 0x0a) {
+        msgStart = i + 3;
+        break;
+      }
+    }
+
+    // Verify message code 141
+    const msgCode = buf.readInt16BE(msgStart);
+    if (msgCode !== 141) return [];
+
+    // Get radar location from product
+    const pdb = msgStart + 18;
+    const prodRadarLat = buf.readInt32BE(pdb + 2) / 1000;
+    const prodRadarLon = buf.readInt32BE(pdb + 6) / 1000;
+
+    // Get tabular block offset
+    const tabOffset = buf.readUInt32BE(pdb + 90);
+    if (tabOffset === 0) return []; // No tabular data
+
+    const tabStart = msgStart + (tabOffset * 2);
+    if (tabStart >= buf.length) return [];
+
+    // Extract ASCII text from tabular block — contains MESH values and AZ/RAN
+    let textContent = '';
+    for (let i = tabStart; i < buf.length; i++) {
+      const b = buf[i];
+      if (b >= 32 && b <= 126) textContent += String.fromCharCode(b);
+      else textContent += '\n';
+    }
+
+    const cells = [];
+    const lines = textContent.split('\n').filter(l => l.trim());
+
+    // Find STMID line to get cell IDs and MESH values
+    let stormIds = [];
+    let azValues = [];
+    let ranValues = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+
+      // Look for STMID line: "CIR STMID 312    N2 311    N2 669    A8"
+      if (line.indexOf('STMID') !== -1) {
+        // Extract storm IDs and their MESH values (3-digit numbers)
+        const parts = line.split(/\s+/);
+        for (let j = 0; j < parts.length; j++) {
+          const num = parseInt(parts[j]);
+          if (num >= 50 && num <= 999 && parts[j].length === 3) {
+            stormIds.push({ id: parts[j], mesh: num / 100 });
+          }
+        }
+      }
+
+      // Look for AZ RAN line: "AZ    RAN 196   108 196   105 359    99"
+      if (line.indexOf('AZ') !== -1 && line.indexOf('RAN') !== -1) {
+        const parts = line.replace(/AZ\s+RAN/, '').trim().split(/\s+/);
+        for (let j = 0; j < parts.length - 1; j += 2) {
+          const az = parseInt(parts[j]);
+          const ran = parseInt(parts[j + 1]);
+          if (!isNaN(az) && !isNaN(ran) && az >= 0 && az <= 360 && ran > 0 && ran < 300) {
+            azValues.push(az);
+            ranValues.push(ran);
+          }
+        }
+      }
+    }
+
+    // Combine storm IDs with their AZ/RAN positions
+    for (let i = 0; i < stormIds.length && i < azValues.length; i++) {
+      const [lat, lon] = azRanToLatLon(azValues[i], ranValues[i], prodRadarLat, prodRadarLon);
+      const meshVal = stormIds[i].mesh;
+
+      // Sanity check
+      if (meshVal > 0 && meshVal < 10 && Math.abs(lat) < 90 && Math.abs(lon) < 180) {
+        cells.push({
+          stormId: stormIds[i].id,
+          meshValue: meshVal,
+          meshLabel: getMeshLabel(meshVal),
+          lat: parseFloat(lat.toFixed(4)),
+          lon: parseFloat(lon.toFixed(4)),
+          azimuth: azValues[i],
+          range: ranValues[i],
+          station: stationId,
+          radarLat: prodRadarLat,
+          radarLon: prodRadarLon
+        });
+      }
+    }
+
+    return cells;
+  } catch (e) {
+    console.error('NMD parse error for ' + stationId + ':', e.message);
+    return [];
+  }
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const { station = 'EAX', date = '', hours = '2' } = req.query || {};
+  const { stations = 'EAX,LSX,SGF', hours = '3', date = '' } = req.query || {};
+  const stationList = stations.split(',').map(s => s.trim().toUpperCase());
 
   try {
-    // Get file listing for the station and time period
-    const now = new Date();
-    const targetDate = date || `${now.getUTCFullYear()}_${String(now.getUTCMonth()+1).padStart(2,'0')}_${String(now.getUTCDate()).padStart(2,'0')}`;
-    const datePrefix = targetDate.replace(/-/g, '_');
-
-    const prefix = `${station.toUpperCase()}_NMD_${datePrefix}`;
-    const listUrl = `${S3_BUCKET}/?list-type=2&prefix=${prefix}&max-keys=100`;
-
-    const listXml = await fetchText(listUrl);
-    const keys = [];
-    const keyRegex = /<Key>([^<]+)<\/Key>/g;
-    let match;
-    while ((match = keyRegex.exec(listXml)) !== null) {
-      keys.push(match[1]);
-    }
-
-    if (!keys.length) {
-      return res.json({
-        station: station.toUpperCase(),
-        date: targetDate,
-        meshCells: [],
-        message: 'No MESH data found for this station/date. Try a different date or station.',
-        availableStations: Object.keys(STATION_LOCS)
-      });
-    }
-
-    // Get the most recent files (last N based on hours parameter)
-    const recentKeys = keys.slice(-Math.min(keys.length, parseInt(hours) * 15)); // ~4 scans per hour
-
-    // Parse each file
     const allCells = [];
-    for (const key of recentKeys.slice(-10)) { // Limit to last 10 scans
+    const now = new Date();
+
+    for (const station of stationList) {
+      if (!STATION_LOCS[station]) continue;
+
+      // Build date prefix
+      let datePrefix;
+      if (date) {
+        datePrefix = date.replace(/-/g, '_');
+      } else {
+        datePrefix = `${now.getUTCFullYear()}_${String(now.getUTCMonth() + 1).padStart(2, '0')}_${String(now.getUTCDate()).padStart(2, '0')}`;
+      }
+
+      const prefix = `${station}_NMD_${datePrefix}`;
+      const listUrl = `${S3_BUCKET}/?list-type=2&prefix=${prefix}&max-keys=200`;
+
       try {
-        const buffer = await fetchBinary(`${S3_BUCKET}/${key}`);
-        const cells = parseNMD(buffer, station.toUpperCase());
-        if (cells && cells.length > 0) {
-          cells.forEach(c => {
-            c.scanTime = key.split('_').slice(3).join(':').replace(/:(\d{2})$/, '');
-            allCells.push(c);
-          });
+        const listXml = await fetchText(listUrl);
+        const keys = [];
+        const keyRegex = /<Key>([^<]+)<\/Key>/g;
+        let match;
+        while ((match = keyRegex.exec(listXml)) !== null) {
+          keys.push(match[1]);
+        }
+
+        if (!keys.length) continue;
+
+        // Get scans from the requested time window
+        const maxScans = Math.min(parseInt(hours) * 15, keys.length);
+        const recentKeys = keys.slice(-maxScans);
+
+        // Parse each file (limit to last 20 to avoid timeout)
+        for (const key of recentKeys.slice(-20)) {
+          try {
+            const buffer = await fetchBinary(`${S3_BUCKET}/${key}`);
+            const cells = parseNMD(buffer, station);
+            if (cells.length > 0) {
+              const timeParts = key.split('_');
+              const scanTime = timeParts.slice(3).join(':');
+              cells.forEach(c => {
+                c.scanTime = scanTime;
+                c.scanKey = key;
+              });
+              allCells.push(...cells);
+            }
+          } catch (e) {
+            // Skip failed downloads
+          }
         }
       } catch (e) {
-        // Skip failed downloads
+        console.error('Failed to list files for ' + station + ':', e.message);
       }
     }
 
+    // Deduplicate — same storm cell across scans, keep the max MESH
+    const uniqueCells = {};
+    allCells.forEach(c => {
+      const key = `${c.station}_${c.stormId}`;
+      if (!uniqueCells[key] || c.meshValue > uniqueCells[key].meshValue) {
+        uniqueCells[key] = c;
+      }
+    });
+
+    const finalCells = Object.values(uniqueCells).sort((a, b) => b.meshValue - a.meshValue);
+
     res.json({
-      station: station.toUpperCase(),
-      stationLocation: STATION_LOCS[station.toUpperCase()],
-      date: targetDate,
-      scansProcessed: recentKeys.length,
-      meshCells: allCells,
-      totalCells: allCells.length,
-      availableStations: Object.keys(STATION_LOCS),
-      source: 'NOAA NEXRAD Level III — Product 141 (Digital MESH)',
-      bucket: 'unidata-nexrad-level3 (AWS S3, public)'
+      stations: stationList,
+      totalScansProcessed: allCells.length,
+      meshCells: finalCells,
+      totalCells: finalCells.length,
+      source: 'NOAA NEXRAD Level III Product 141 (Digital MESH) — unidata-nexrad-level3 S3',
+      availableStations: Object.keys(STATION_LOCS)
     });
   } catch (err) {
     console.error('MESH API error:', err.message);
-    res.status(500).json({ error: 'Failed to fetch MESH data', details: err.message });
+    res.status(500).json({ error: 'Failed to process MESH data', details: err.message });
   }
 };

@@ -98,48 +98,72 @@ window.toggleLayer=function(id){
 function loadMESHData(){
   meshSwathLayers.forEach(function(l){map.removeLayer(l)});
   meshSwathLayers=[];
-  document.getElementById('statusText').textContent='Loading MESH radar data...';
+  document.getElementById('statusText').textContent='Loading NEXRAD MESH data...';
 
-  // Fetch from multiple Missouri-area radar stations
-  var stations=['EAX','LSX','SGF'];
-  var fetches=stations.map(function(st){
-    return fetch('/api/mesh?station='+st+'&hours=3').then(function(r){return r.json()}).catch(function(){return{meshCells:[]}});
-  });
+  // Fetch from all radar stations
+  fetch('/api/mesh?stations=EAX,LSX,SGF,ICT,TOP,OAX,DVN,ILX,PAH,LZK,TSA,INX,IWX,IND,LOT&hours=6')
+    .then(function(r){return r.json()})
+    .then(function(data){
+      var cells=data.meshCells||[];
 
-  Promise.all(fetches).then(function(results){
-    var totalCells=0;
-    results.forEach(function(data){
-      (data.meshCells||[]).forEach(function(cell){
-        if(cell.coords&&cell.coords.length>=2){
-          totalCells++;
-          var color=cell.meshValue>=2.75?'#ff0000':cell.meshValue>=1.75?'#ff6600':cell.meshValue>=1?'#ffcc00':'#ffe082';
-          var fillOpacity=cell.meshValue>=1.75?0.35:0.2;
+      if(cells.length===0){
+        // Fall back to SPC spotter swaths
+        drawHailSwaths(allReports);
+        document.getElementById('statusText').textContent='No MESH cells detected — showing spotter data';
+        return;
+      }
 
-          // Draw polygon from coordinates
-          try{
-            var poly=L.polygon(cell.coords,{
-              color:color,fillColor:color,fillOpacity:fillOpacity,
-              weight:1,opacity:0.5
-            });
-            poly.bindPopup('<b>MESH: '+cell.meshValue+'" — '+cell.meshLabel+'</b><br>Station: '+cell.station+'<br>Source: NEXRAD Level III');
-            poly.addTo(map);
-            meshSwathLayers.push(poly);
-          }catch(e){}
-        }
+      // Draw MESH contour rings for each cell — like RadarScope
+      cells.forEach(function(cell){
+        // Multiple contour rings per cell (simulates the gradient swath)
+        var rings=[
+          {factor:3.0, opacity:0.08, color:'#ffe082'},  // Outer — light yellow
+          {factor:2.2, opacity:0.12, color:'#ffcc00'},  // Yellow
+          {factor:1.6, opacity:0.18, color:'#ff9800'},  // Orange
+          {factor:1.1, opacity:0.25, color:'#ff5722'},  // Red-orange
+          {factor:0.7, opacity:0.30, color:'#f44336'},  // Red
+          {factor:0.3, opacity:0.35, color:'#9c27b0'}   // Purple core
+        ];
+
+        // Base radius in meters — scale by MESH value
+        var baseRadius=cell.meshValue*2500; // bigger MESH = wider swath
+
+        rings.forEach(function(ring){
+          var r=baseRadius*ring.factor;
+          var circle=L.circle([cell.lat,cell.lon],{
+            radius:r,fillColor:ring.color,fillOpacity:ring.opacity,
+            color:ring.color,weight:0.5,opacity:ring.opacity*1.5
+          });
+          circle.addTo(map);
+          meshSwathLayers.push(circle);
+        });
+
+        // Center marker with MESH value label
+        var marker=L.circleMarker([cell.lat,cell.lon],{
+          radius:4,fillColor:'#fff',fillOpacity:0.9,color:'#000',weight:1
+        });
+        marker.bindPopup(
+          '<div style="min-width:180px">'+
+          '<b style="font-size:14px;color:#f44336">MESH: '+cell.meshValue+'"</b><br>'+
+          '<b>'+cell.meshLabel+'</b><br><br>'+
+          '<div style="display:flex;justify-content:space-between"><span style="color:#888">Storm Cell</span><b>'+cell.stormId+'</b></div>'+
+          '<div style="display:flex;justify-content:space-between"><span style="color:#888">Station</span><b>'+cell.station+'</b></div>'+
+          '<div style="display:flex;justify-content:space-between"><span style="color:#888">Azimuth</span><b>'+cell.azimuth+'°</b></div>'+
+          '<div style="display:flex;justify-content:space-between"><span style="color:#888">Range</span><b>'+cell.range+' nm</b></div>'+
+          '<div style="display:flex;justify-content:space-between"><span style="color:#888">Source</span><b>NEXRAD Level III</b></div>'+
+          '<br><button class="card-btn red" style="width:100%" onclick="findBusinesses('+cell.lat+','+cell.lon+')">Find Shops in Zone</button>'+
+          '</div>'
+        );
+        marker.addTo(map);
+        meshSwathLayers.push(marker);
       });
-    });
 
-    // If no MESH cells found, fall back to SPC report swaths
-    if(totalCells===0){
+      document.getElementById('statusText').textContent='MESH: '+cells.length+' hail cells from NEXRAD radar';
+    }).catch(function(e){
+      console.error('MESH load failed:',e);
       drawHailSwaths(allReports);
-      document.getElementById('statusText').textContent='MESH: No radar hail detected — showing spotter reports';
-    } else {
-      document.getElementById('statusText').textContent='MESH: '+totalCells+' radar hail cells from NEXRAD';
-    }
-  }).catch(function(){
-    drawHailSwaths(allReports);
-    document.getElementById('statusText').textContent='MESH unavailable — showing spotter swaths';
-  });
+      document.getElementById('statusText').textContent='MESH unavailable — showing spotter data';
+    });
 }
 
 // Fallback: Draw hail swaths from SPC reports
