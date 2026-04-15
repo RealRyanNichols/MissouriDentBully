@@ -46,11 +46,25 @@ function initApp(){
 
 // ─── Map ──────────────────────────────────────────────
 function initMap(){
-  map=L.map('map',{zoomControl:true,attributionControl:false}).setView([38.5,-93.5],5);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19,subdomains:'abcd'}).addTo(map);
-  layers.ref=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q.cgi',{layers:'nexrad-n0q-900913',transparent:true,format:'image/png',opacity:0.4}).addTo(map);
-  layers.vel=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0u.cgi',{layers:'nexrad-n0u-900913',transparent:true,format:'image/png',opacity:0.4});
-  layers.pre=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/iowa/mrms_p1h.cgi',{layers:'mrms_p1h',transparent:true,format:'image/png',opacity:0.35});
+  map=L.map('map',{
+    zoomControl:true,attributionControl:false,
+    dragging:true,touchZoom:true,scrollWheelZoom:false, // prevent accidental scroll hijack
+    tap:true,minZoom:4,maxZoom:18
+  }).setView([38.5,-92.5],7); // Zoomed into Missouri by default
+
+  // Street-level map with labels, cities, neighborhoods — NOT dark tiles
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png',{
+    maxZoom:19,subdomains:'abcd'
+  }).addTo(map);
+
+  // State/county boundary overlay for clarity
+  L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/toner-lines/{z}/{x}/{y}{r}.png',{
+    maxZoom:19,subdomains:'abcd',opacity:0.15
+  }).addTo(map);
+
+  layers.ref=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q.cgi',{layers:'nexrad-n0q-900913',transparent:true,format:'image/png',opacity:0.35}).addTo(map);
+  layers.vel=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0u.cgi',{layers:'nexrad-n0u-900913',transparent:true,format:'image/png',opacity:0.35});
+  layers.pre=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/iowa/mrms_p1h.cgi',{layers:'mrms_p1h',transparent:true,format:'image/png',opacity:0.3});
 }
 
 window.toggleLayer=function(id){
@@ -111,7 +125,7 @@ function renderMap(reports){
   reports.forEach(function(r){
     var color=r.size>=2.75?'#ff1744':r.size>=1.75?'#C0392B':r.size>=1?'#ffab00':'#00e5ff';
     var radius=r.size>=2.75?9:r.size>=1.75?7:r.size>=1?5:4;
-    var m=L.circleMarker([r.lat,r.lon],{radius:radius,fillColor:color,fillOpacity:0.85,color:'rgba(255,255,255,0.2)',weight:1});
+    var m=L.circleMarker([r.lat,r.lon],{radius:radius,fillColor:color,fillOpacity:0.8,color:'#fff',weight:1.5,bubblingMouseEvents:false});
     if(r.size>=1.75) L.circleMarker([r.lat,r.lon],{radius:radius+5,fillColor:color,fillOpacity:0.12,stroke:false,interactive:false}).addTo(map);
     m.bindPopup('<b>'+r.location+', '+r.state+'</b><br>Size: <b style="color:'+color+'">'+r.size+'" — '+r.sizeLabel+'</b><br>County: '+r.county+'<br>Time: '+r.time+' '+(r.day==='today'?'Today':'Yesterday')+(r.comments?'<br><i>'+r.comments+'</i>':'')+'<br><br><button class="card-btn red" onclick="addLeadFromMap(\''+r.location+'\',\''+r.county+'\',\''+r.state+'\')">+ Add Lead</button>');
     m.addTo(map);
