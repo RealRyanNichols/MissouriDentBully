@@ -142,7 +142,8 @@ function fetchDemographics(state){
       var name=c.name.split(',')[0].replace(' County','').trim().toLowerCase();
       byCounty[name]=c;
     });
-    demoCache[state]={summary:data.summary,byCounty:byCounty};
+    var byPlace=data.placesByName||{};
+    demoCache[state]={summary:data.summary,byCounty:byCounty,byPlace:byPlace};
     return demoCache[state];
   }).catch(function(){return null});
 }
@@ -153,7 +154,19 @@ function loadAllDemographics(reports){
   return Promise.all(states.map(function(s){return fetchDemographics(s)}));
 }
 
-// ─── Get county demo data ─────────────────────────────
+// ─── Get city data first, county as fallback ──────────
+function getCityDemo(location,county,state){
+  var d=demoCache[state];
+  if(!d) return {data:null,level:'none'};
+  // Try to extract city name from SPC location (e.g. "3 NW Trenton" → "trenton")
+  var cityName=(location||'').replace(/^\d+\s+[NSEW]+\s+/i,'').replace(/^\d+\s+[NSEW]{2,3}\s+/i,'').trim().toLowerCase();
+  if(d.byPlace&&d.byPlace[cityName]) return {data:d.byPlace[cityName],level:'city'};
+  // Fallback to county
+  var countyKey=county.toLowerCase().replace(' county','').trim();
+  if(d.byCounty&&d.byCounty[countyKey]) return {data:d.byCounty[countyKey],level:'county'};
+  return {data:null,level:'none'};
+}
+
 function getCountyDemo(county,state){
   var d=demoCache[state];
   if(!d) return null;
@@ -194,10 +207,14 @@ function renderMap(reports){
       var m=L.circleMarker([r.lat,r.lon],{radius:radius,fillColor:color,fillOpacity:0.8,color:'#fff',weight:1.5,bubblingMouseEvents:false});
       if(r.size>=1.75) L.circleMarker([r.lat,r.lon],{radius:radius+5,fillColor:color,fillOpacity:0.12,stroke:false,interactive:false}).addTo(map);
 
-      var demo=getCountyDemo(r.county,r.state);
+      var cityInfo=getCityDemo(r.location,r.county,r.state);
+      var demo=cityInfo.data;
+      var demoLevel=cityInfo.level;
 
       // Convert UTC time to Central
       var localTime=utcToCentral(r.time);
+      var demoLabel=demoLevel==='city'?'City Demographics (Census)':'County Demographics (Census)';
+      var popLabel=demoLevel==='city'?'City Population':'County Population';
 
       var popup='<div style="min-width:220px">'+
         '<b style="font-size:14px">'+r.location+', '+r.state+'</b><br>'+
@@ -208,9 +225,9 @@ function renderMap(reports){
           '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Source</span><b>NWS/SPC Verified</b></div>'+
         '</div>'+
         '<div style="margin:6px 0;padding:6px 0;border-bottom:1px solid #2a2a3e">'+
-          '<div style="font-size:10px;color:#C0392B;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-weight:700">County Demographics (Census)</div>'+
+          '<div style="font-size:10px;color:#C0392B;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-weight:700">'+demoLabel+'</div>'+
           (demo?
-            '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">County Population</span><b>'+(demo.population||0).toLocaleString()+'</b></div>'+
+            '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">'+popLabel+'</span><b>'+(demo.population||0).toLocaleString()+'</b></div>'+
             '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Median Income</span><b>$'+((demo.medianIncome||0)/1000).toFixed(0)+'k</b></div>'+
             '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Median Home Value</span><b>$'+((demo.medianHomeValue||0)/1000).toFixed(0)+'k</b></div>'+
             '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Housing Units</span><b>'+(demo.totalHousingUnits||0).toLocaleString()+'</b></div>'

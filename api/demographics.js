@@ -57,7 +57,27 @@ module.exports = async function handler(req, res) {
         }));
       }
     } catch (e) {
-      console.error('Census fetch failed:', e.message);
+      console.error('Census county fetch failed:', e.message);
+    }
+
+    // Also fetch city/place-level data (more specific than county)
+    let places = [];
+    try {
+      const placesUrl = `https://api.census.gov/data/2022/acs/acs5?get=NAME,B01003_001E,B19013_001E,B25001_001E,B25077_001E&for=place:*&in=state:${fips}`;
+      const placesData = await fetchJSON(placesUrl);
+      if (Array.isArray(placesData) && placesData.length > 1) {
+        places = placesData.slice(1).map(row => ({
+          name: row[0], // "Trenton city, Missouri"
+          population: parseInt(row[1]) || 0,
+          medianIncome: parseInt(row[2]) || 0,
+          totalHousingUnits: parseInt(row[3]) || 0,
+          medianHomeValue: parseInt(row[4]) || 0,
+          stateFips: row[5],
+          placeFips: row[6]
+        }));
+      }
+    } catch (e) {
+      console.error('Census places fetch failed:', e.message);
     }
 
     // Calculate state-level aggregates
@@ -73,6 +93,16 @@ module.exports = async function handler(req, res) {
     // Sort by population desc
     counties.sort((a, b) => b.population - a.population);
 
+    // Build place lookup by name (lowercase, stripped)
+    const placesByName = {};
+    places.forEach(p => {
+      // Census returns "Trenton city, Missouri" — extract just city name
+      const cityName = p.name.split(',')[0].replace(/ city| town| village| CDP/gi, '').trim().toLowerCase();
+      placesByName[cityName] = p;
+    });
+
+    places.sort((a, b) => b.population - a.population);
+
     res.json({
       state: state.toUpperCase(),
       stateFips: fips,
@@ -81,9 +111,12 @@ module.exports = async function handler(req, res) {
         totalHousingUnits: totalHousing,
         avgMedianIncome: avgIncome,
         avgMedianHomeValue: avgHomeValue,
-        totalCounties: counties.length
+        totalCounties: counties.length,
+        totalPlaces: places.length
       },
-      counties: counties.slice(0, 100), // Top 100 by population
+      counties: counties.slice(0, 100),
+      places: places.slice(0, 200), // Top 200 cities/towns by population
+      placesByName: placesByName,
       fetchedAt: new Date().toISOString()
     });
   } catch (err) {
