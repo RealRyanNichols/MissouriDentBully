@@ -28,8 +28,8 @@ document.addEventListener('DOMContentLoaded',function(){
 
 // ─── State ────────────────────────────────────────────
 var map,allReports=[],allAlerts=[],scoutZones=[],leads=[];
-var layers={ref:null,vel:null,pre:null};
-var layerState={ref:true,vel:false,pre:false};
+var layers={ref:null,vel:null,pre:null,mesh:null};
+var layerState={ref:true,vel:false,pre:false,mesh:false};
 var markers=[];
 var demoCache={}; // demographics cache by state
 
@@ -58,9 +58,13 @@ function initMap(){
     maxZoom:19
   }).addTo(map);
 
+  // Radar layers
   layers.ref=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q.cgi',{layers:'nexrad-n0q-900913',transparent:true,format:'image/png',opacity:0.55}).addTo(map);
   layers.vel=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0u.cgi',{layers:'nexrad-n0u-900913',transparent:true,format:'image/png',opacity:0.35});
   layers.pre=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/iowa/mrms_p1h.cgi',{layers:'mrms_p1h',transparent:true,format:'image/png',opacity:0.3});
+
+  // MESH layer — Maximum Estimated Size of Hail (this is the swath data)
+  layers.mesh=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/iowa/mrms_mesh.cgi',{layers:'mrms_mesh',transparent:true,format:'image/png',opacity:0.6});
 }
 
 window.toggleLayer=function(id){
@@ -271,6 +275,7 @@ function renderMap(reports){
           '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">County</span><b>'+r.county+'</b></div>'+
           '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Time</span><b>'+localTime+' CT '+(r.day==='today'?'Today':'Yesterday')+'</b></div>'+
           '<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Source</span><b>NWS/SPC Verified</b></div>'+
+          (isMediaVerified(r.comments)?'<div style="display:flex;justify-content:space-between;margin:2px 0"><span style="color:#6a6a8a">Media</span><b style="color:#00e676">PHOTO/VIDEO CONFIRMED</b></div>':'')+
         '</div>'+
         '<div style="margin:6px 0;padding:6px 0;border-bottom:1px solid #2a2a3e">'+
           '<div style="font-size:10px;color:#C0392B;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;font-weight:700">'+demoLabel+'</div>'+
@@ -302,7 +307,9 @@ function renderReports(reports){
     var bc=r.size>=2.75?'badge-hotred':r.size>=1.75?'badge-red':r.size>=1?'badge-amber':'badge-cyan';
     return '<div class="data-card" onclick="flyTo('+r.lat+','+r.lon+')">'+
       '<div class="card-head"><span class="card-title">'+r.location+', '+r.state+'</span><span class="card-badge '+bc+'">'+r.size+'" '+r.sizeLabel+'</span></div>'+
-      '<div class="card-meta"><span>'+r.county+' Co.</span><span>'+utcToCentral(r.time)+' CT '+(r.day==='today'?'Today':'Yest.')+'</span><span>'+r.damageLevel+'</span></div>'+
+      '<div class="card-meta"><span>'+r.county+' Co.</span><span>'+utcToCentral(r.time)+' CT '+(r.day==='today'?'Today':'Yest.')+'</span><span>'+r.damageLevel+'</span>'+
+      (isMediaVerified(r.comments)?'<span class="card-badge badge-green" style="font-family:var(--font);font-size:9px">MEDIA VERIFIED</span>':'')+
+      '</div>'+
       (r.comments?'<div class="card-meta" style="margin-top:4px"><span style="color:#888">'+r.comments+'</span></div>':'')+
     '</div>';
   }).join('');
@@ -756,6 +763,14 @@ window.addDealerFromBiz=function(name,phone,city,state){
   map.closePopup();
   alert(name+' added to Dealership leads!');
 };
+
+function isMediaVerified(comments){
+  if(!comments) return false;
+  var c=comments.toLowerCase();
+  return c.indexOf('social media')!==-1||c.indexOf('photo')!==-1||c.indexOf('video')!==-1||
+    c.indexOf('broadcast')!==-1||c.indexOf('picture')!==-1||c.indexOf('media relay')!==-1||
+    c.indexOf('public report')!==-1;
+}
 
 function debounce(fn,ms){var t;return function(){clearTimeout(t);t=setTimeout(fn,ms)}}
 
