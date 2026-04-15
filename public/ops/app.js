@@ -736,30 +736,92 @@ window.loadToday=function(){
 // ─── Business Finder ──────────────────────────────────
 window.findBusinesses=function(lat,lon){
   document.getElementById('statusText').textContent='Finding businesses...';
+  // Switch to Scout tab if not there
+  document.querySelector('[data-tab="scout"]').click();
+
   fetch('/api/businesses?lat='+lat+'&lon='+lon+'&radius=15').then(function(r){return r.json()}).then(function(data){
-    var all=data.allBusinesses||[];
-    if(!all.length){alert('No auto businesses found within 15 miles. Try a larger area.');return}
+    var container=document.getElementById('bizResults');
+    container.style.display='block';
 
-    // Show results in an alert for now — will build proper panel later
-    var msg='BUSINESSES IN HAIL ZONE ('+data.summary.totalFound+' found):\n\n';
-    msg+='DEALERSHIPS ('+data.summary.dealerships+'):\n';
-    (data.dealerships||[]).forEach(function(b){msg+='  '+b.name+(b.phone?' — '+b.phone:'')+' ('+b.distance+')\n'});
-    msg+='\nBODY SHOPS ('+data.summary.bodyShops+'):\n';
-    (data.bodyShops||[]).forEach(function(b){msg+='  '+b.name+(b.phone?' — '+b.phone:'')+' ('+b.distance+')\n'});
-    msg+='\nAUTO SHOPS ('+data.summary.autoShops+'):\n';
-    (data.autoShops||[]).forEach(function(b){msg+='  '+b.name+(b.phone?' — '+b.phone:'')+' ('+b.distance+')\n'});
+    // Render dealerships
+    var dealerEl=document.getElementById('bizDealerships');
+    var dealers=data.dealerships||[];
+    if(!dealers.length){
+      dealerEl.innerHTML='<div class="data-card"><div class="card-title" style="color:var(--muted)">No dealerships found within 15 miles</div></div>';
+    } else {
+      dealerEl.innerHTML=dealers.map(function(b){
+        return '<div class="data-card" style="border-left:3px solid var(--red)">'+
+          '<div class="card-head"><span class="card-title">'+b.name+'</span><span class="card-badge badge-red">'+b.distance+'</span></div>'+
+          '<div class="card-meta" style="flex-direction:column;gap:4px;margin-top:6px">'+
+            (b.address?'<span>'+b.address+(b.city?', '+b.city:'')+(b.state?' '+b.state:'')+'</span>':'')+
+            (b.phone?'<span>Phone: <b>'+b.phone+'</b></span>':'')+
+            (b.website?'<span>Web: <a href="'+b.website+'" target="_blank">'+b.website.substring(0,40)+'</a></span>':'')+
+            (b.brand?'<span>Brand: '+b.brand+'</span>':'')+
+          '</div>'+
+          '<div class="card-actions">'+
+            (b.phone?'<a class="card-btn red" href="tel:'+b.phone+'">Call Now</a><a class="card-btn" href="sms:'+b.phone+'">Text</a>':'')+
+            '<button class="card-btn" onclick="addDealerFromBiz(\''+b.name.replace(/'/g,'')+'\',\''+b.phone+'\',\''+b.city+'\',\''+b.state+'\')">+ Add Lead</button>'+
+            '<button class="card-btn" onclick="flyTo('+b.lat+','+b.lon+')">Map</button>'+
+          '</div></div>';
+      }).join('');
+    }
 
-    alert(msg);
+    // Render body shops
+    var bodyEl=document.getElementById('bizBodyShops');
+    var bodies=data.bodyShops||[];
+    if(!bodies.length){
+      bodyEl.innerHTML='<div class="data-card"><div class="card-title" style="color:var(--muted)">No body shops found</div></div>';
+    } else {
+      bodyEl.innerHTML=bodies.map(function(b){
+        return '<div class="data-card" style="border-left:3px solid var(--amber)">'+
+          '<div class="card-head"><span class="card-title">'+b.name+'</span><span class="card-badge badge-amber">'+b.distance+'</span></div>'+
+          '<div class="card-meta" style="flex-direction:column;gap:4px;margin-top:6px">'+
+            (b.address?'<span>'+b.address+(b.city?', '+b.city:'')+'</span>':'')+
+            (b.phone?'<span>Phone: <b>'+b.phone+'</b></span>':'')+
+            (b.website?'<span><a href="'+b.website+'" target="_blank">Website</a></span>':'')+
+          '</div>'+
+          '<div class="card-actions">'+
+            (b.phone?'<a class="card-btn" href="tel:'+b.phone+'">Call</a>':'')+
+            '<button class="card-btn" onclick="flyTo('+b.lat+','+b.lon+')">Map</button>'+
+          '</div></div>';
+      }).join('');
+    }
 
-    // Also add markers to map
-    all.forEach(function(b){
-      var m=L.marker([b.lat,b.lon]).addTo(map);
-      m.bindPopup('<b>'+b.name+'</b><br>'+b.category+'<br>'+(b.address?b.address+'<br>':'')+(b.phone?'<a href="tel:'+b.phone+'">'+b.phone+'</a><br>':'')+(b.website?'<a href="'+b.website+'" target="_blank">Website</a><br>':'')+'<br><button class="card-btn red" onclick="addDealerFromBiz(\''+b.name.replace(/'/g,'')+'\',\''+b.phone+'\',\''+b.city+'\',\''+b.state+'\')">+ Add as Lead</button>');
+    // Render auto shops
+    var autoEl=document.getElementById('bizAutoShops');
+    var autos=data.autoShops||[];
+    if(!autos.length){
+      autoEl.innerHTML='<div class="data-card"><div class="card-title" style="color:var(--muted)">No other auto businesses found</div></div>';
+    } else {
+      autoEl.innerHTML=autos.map(function(b){
+        return '<div class="data-card">'+
+          '<div class="card-head"><span class="card-title">'+b.name+'</span><span class="card-badge badge-cyan">'+b.distance+'</span></div>'+
+          '<div class="card-meta">'+
+            (b.address?'<span>'+b.address+'</span>':'')+
+            (b.phone?'<span>'+b.phone+'</span>':'')+
+          '</div>'+
+          '<div class="card-actions">'+
+            (b.phone?'<a class="card-btn" href="tel:'+b.phone+'">Call</a>':'')+
+            '<button class="card-btn" onclick="flyTo('+b.lat+','+b.lon+')">Map</button>'+
+          '</div></div>';
+      }).join('');
+    }
+
+    // Pin businesses on map
+    (data.allBusinesses||[]).forEach(function(b){
+      var icon=b.category==='dealership'?'red':'blue';
+      var m=L.circleMarker([b.lat,b.lon],{radius:6,fillColor:b.category==='dealership'?'#C0392B':'#3498db',fillOpacity:0.9,color:'#fff',weight:2});
+      m.bindPopup('<b>'+b.name+'</b><br><span style="color:#999">'+b.category+'</span><br>'+(b.address||'')+(b.phone?'<br><a href="tel:'+b.phone+'">'+b.phone+'</a>':''));
+      m.addTo(map);
       markers.push(m);
     });
-    document.getElementById('statusText').textContent='Showing '+all.length+' businesses';
+
+    document.getElementById('statusText').textContent=data.summary.totalFound+' businesses found';
+
+    // Scroll to results
+    container.scrollIntoView({behavior:'smooth'});
   }).catch(function(e){
-    alert('Business search failed');
+    alert('Business search failed — try again');
     console.error(e);
   });
 };
