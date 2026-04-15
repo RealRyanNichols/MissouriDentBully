@@ -71,12 +71,15 @@ module.exports = async function handler(req, res) {
           }).on('error', reject);
         });
 
-        // Parse CSV: Time,Speed,Location,County,State,Lat,Lon,Comments
+        // Parse CSV: Time,Size,Location,County,State,Lat,Lon,Comments
         const lines = csvData.split('\n').filter(l => l.trim() && !l.startsWith('Time'));
         for (const line of lines) {
           const parts = line.split(',');
           if (parts.length >= 8) {
-            const size = parseFloat(parts[1]) || 0;
+            let size = parseFloat(parts[1]) || 0;
+            // Sanity check — largest US hail ever was 8" (Vivian SD)
+            if (size > 6 && size > 20) size = size / 100; // Convert from hundredths
+            if (size > 6 || size <= 0) continue; // Skip unrealistic or empty
             const lat = parseFloat(parts[5]);
             const lon = parseFloat(parts[6]);
             if (!isNaN(lat) && !isNaN(lon)) {

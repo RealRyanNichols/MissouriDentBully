@@ -175,9 +175,11 @@ function renderAlerts(alerts){
       '<div class="alert-area">'+a.areas+'</div>'+
       '<div class="alert-desc">'+((a.description||'').substring(0,200))+'</div>'+
       '<div class="card-actions">'+
-        '<a class="card-btn" href="https://twitter.com/intent/tweet?text='+shareText+'" target="_blank">Share X</a>'+
-        '<a class="card-btn" href="sms:?body='+shareText+'" >Text</a>'+
-        '<button class="card-btn" onclick="shareNative(\''+a.headline+'\')">Share</button>'+
+        '<a class="card-btn" href="https://twitter.com/intent/tweet?text='+shareText+'" target="_blank">\u{1D54F} Post to X</a>'+
+        '<a class="card-btn" href="https://www.facebook.com/sharer/sharer.php?quote='+shareText+'" target="_blank">\uD83D\uDCF1 Facebook</a>'+
+        '<a class="card-btn" href="sms:?body='+shareText+'">\\uD83D\\uDCF2 Text</a>'+
+        '<a class="card-btn" href="mailto:?subject=Storm%20Alert&body='+shareText+'">\\u2709 Email</a>'+
+        '<button class="card-btn" onclick="shareNative(\''+((a.headline||'').replace(/'/g,''))+'\')">\\uD83D\\uDD17 Share</button>'+
       '</div></div>';
   }).join('');
 }
@@ -248,7 +250,7 @@ window.addLeadFromZone=function(county,state){
   renderLeads();
 };
 window.updateLeadStatus=function(i){
-  var order=['new','contacted','scheduled','completed'];
+  var order=['new','contacted','estimate sent','appointment booked','scheduled','insurance filed','in progress','completed','lost'];
   var cur=order.indexOf(leads[i].status);
   leads[i].status=order[(cur+1)%order.length];
   localStorage.setItem('hs-leads',JSON.stringify(leads));

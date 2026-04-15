@@ -50,7 +50,17 @@ module.exports = async function handler(req, res) {
         for (const line of lines) {
           const p = line.split(',');
           if (p.length >= 8) {
-            const size = parseFloat(p[1]) || 0;
+            let size = parseFloat(p[1]) || 0;
+            // SPC reports size in inches — sanity check
+            // Largest hail ever recorded in US was 8" (Vivian, SD 2010)
+            // Anything over 6 is almost certainly a parsing error or speed field
+            if (size > 6) {
+              // SPC sometimes has speed in this field — skip unrealistic values
+              // Or it could be in hundredths: 175 = 1.75"
+              if (size > 20) size = size / 100;
+              if (size > 6) continue; // Still unrealistic, skip
+            }
+            if (size <= 0) continue; // No size data
             const rLat = parseFloat(p[5]);
             const rLon = parseFloat(p[6]);
             if (!isNaN(rLat) && !isNaN(rLon)) {
