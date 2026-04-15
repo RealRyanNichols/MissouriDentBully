@@ -64,12 +64,30 @@ function initMap(){
 }
 
 window.toggleLayer=function(id){
-  layerState[id]=!layerState[id];
-  if(layerState[id]) layers[id].addTo(map); else map.removeLayer(layers[id]);
-  document.getElementById('btn'+id.charAt(0).toUpperCase()+id.slice(1)).classList.toggle('active',layerState[id]);
+  try{
+    layerState[id]=!layerState[id];
+    if(layerState[id]){
+      if(!map.hasLayer(layers[id])) layers[id].addTo(map);
+    } else {
+      if(map.hasLayer(layers[id])) map.removeLayer(layers[id]);
+    }
+  }catch(e){console.error('Toggle layer error:',e)}
+  var btnId='btn'+id.charAt(0).toUpperCase()+id.slice(1);
+  var btn=document.getElementById(btnId);
+  if(btn){
+    if(layerState[id]){btn.classList.add('active');btn.textContent=btn.textContent.replace(' OFF',' ON').replace(/^(Radar|Velocity|Precip)$/,'$1')}
+    else{btn.classList.remove('active')}
+  }
 };
 window.fitAllMarkers=function(){
-  if(markers.length){var g=L.featureGroup(markers);map.fitBounds(g.getBounds().pad(0.1))}
+  try{
+    if(markers.length>0){
+      var g=L.featureGroup(markers);
+      map.fitBounds(g.getBounds().pad(0.15));
+    } else {
+      map.setView([38.5,-92.5],7); // Default to Missouri
+    }
+  }catch(e){console.error('Fit markers error:',e)}
 };
 
 // ─── Tabs ─────────────────────────────────────────────
