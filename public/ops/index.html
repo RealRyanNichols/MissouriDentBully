@@ -112,33 +112,110 @@
 
 <!-- LEADS TAB -->
 <div class="tab-panel" id="panel-leads">
-<div class="section-head">Lead Tracker</div>
-<div class="lead-filters">
-<button class="filter-chip active" data-lf="all">All</button>
-<button class="filter-chip" data-lf="new">New</button>
-<button class="filter-chip" data-lf="contacted">Contacted</button>
-<button class="filter-chip" data-lf="estimate sent">Estimate</button>
-<button class="filter-chip" data-lf="appointment booked">Appt Booked</button>
-<button class="filter-chip" data-lf="insurance filed">Insurance</button>
-<button class="filter-chip" data-lf="in progress">In Progress</button>
-<button class="filter-chip" data-lf="completed">Completed</button>
-<button class="filter-chip" data-lf="lost">Lost</button>
+
+<!-- Lead Type Selector -->
+<div class="lead-type-tabs">
+<button class="type-tab active" data-lt="storm" onclick="switchLeadType('storm')">Storm Leads</button>
+<button class="type-tab" data-lt="customer" onclick="switchLeadType('customer')">Customers</button>
+<button class="type-tab" data-lt="dealership" onclick="switchLeadType('dealership')">Dealerships</button>
 </div>
-<button class="action-btn" onclick="showAddLead()">+ ADD LEAD</button>
-<div id="leadsList" class="card-list"></div>
+
+<!-- STORM LEADS -->
+<div class="lead-section active" id="sec-storm">
+<p class="section-sub">Bulk leads from hail zones. Scout a storm, add the area, work the neighborhood.</p>
+<div class="lead-filters">
+<button class="filter-chip active" data-lf="all" data-for="storm">All</button>
+<button class="filter-chip" data-lf="scouted" data-for="storm">Scouted</button>
+<button class="filter-chip" data-lf="door-knocked" data-for="storm">Door Knocked</button>
+<button class="filter-chip" data-lf="contacted" data-for="storm">Contacted</button>
+<button class="filter-chip" data-lf="estimate sent" data-for="storm">Estimate</button>
+<button class="filter-chip" data-lf="booked" data-for="storm">Booked</button>
+</div>
+<button class="action-btn" onclick="showAddLead('storm')">+ ADD STORM LEAD</button>
+<div id="stormLeadsList" class="card-list"></div>
+</div>
+
+<!-- CUSTOMER LEADS -->
+<div class="lead-section" id="sec-customer">
+<p class="section-sub">Individual clients — someone called, texted, submitted a form, or walked in.</p>
+<div class="lead-filters">
+<button class="filter-chip active" data-lf="all" data-for="customer">All</button>
+<button class="filter-chip" data-lf="new" data-for="customer">New</button>
+<button class="filter-chip" data-lf="estimate sent" data-for="customer">Estimate</button>
+<button class="filter-chip" data-lf="appointment booked" data-for="customer">Appt Booked</button>
+<button class="filter-chip" data-lf="insurance filed" data-for="customer">Insurance</button>
+<button class="filter-chip" data-lf="in progress" data-for="customer">In Progress</button>
+<button class="filter-chip" data-lf="completed" data-for="customer">Completed</button>
+<button class="filter-chip" data-lf="paid" data-for="customer">Paid</button>
+</div>
+<button class="action-btn" onclick="showAddLead('customer')">+ ADD CUSTOMER</button>
+<div id="customerLeadsList" class="card-list"></div>
+</div>
+
+<!-- DEALERSHIP ACCOUNTS -->
+<div class="lead-section" id="sec-dealership">
+<p class="section-sub">Dealership and fleet accounts — recurring relationships, multiple vehicles.</p>
+<div class="lead-filters">
+<button class="filter-chip active" data-lf="all" data-for="dealership">All</button>
+<button class="filter-chip" data-lf="prospecting" data-for="dealership">Prospecting</button>
+<button class="filter-chip" data-lf="pitched" data-for="dealership">Pitched</button>
+<button class="filter-chip" data-lf="contract sent" data-for="dealership">Contract Sent</button>
+<button class="filter-chip" data-lf="active" data-for="dealership">Active</button>
+<button class="filter-chip" data-lf="renewal" data-for="dealership">Renewal</button>
+</div>
+<button class="action-btn" onclick="showAddLead('dealership')">+ ADD DEALERSHIP</button>
+<div id="dealershipLeadsList" class="card-list"></div>
+</div>
+
+<!-- ADD LEAD FORMS -->
 <div id="addLeadForm" style="display:none" class="form-card">
-<div class="form-title">New Lead</div>
-<input type="text" id="lName" placeholder="Name">
-<input type="tel" id="lPhone" placeholder="Phone">
+<div class="form-title" id="formTitle">New Lead</div>
+
+<!-- Storm Lead Fields -->
+<div id="stormFields">
+<input type="text" id="lStormArea" placeholder="Storm area / neighborhood / town">
+<input type="text" id="lStormCounty" placeholder="County">
+<input type="text" id="lStormState" placeholder="State" value="MO">
+<input type="text" id="lStormEvent" placeholder="Storm event (e.g. April 15 hail)">
+<select id="lStormDamage"><option value="auto-hail">Vehicle Hail Damage</option><option value="roof">Roof Damage</option><option value="solar">Solar Damage</option><option value="mixed">Mixed Damage</option></select>
+<input type="number" id="lStormHailSize" placeholder="Hail size (inches)" step="0.25">
+<textarea id="lStormNotes" placeholder="Notes — neighborhoods hit, streets to target..." rows="3"></textarea>
+</div>
+
+<!-- Customer Lead Fields -->
+<div id="customerFields" style="display:none">
+<input type="text" id="lName" placeholder="Customer name">
+<input type="tel" id="lPhone" placeholder="Phone number">
 <input type="email" id="lEmail" placeholder="Email">
 <input type="text" id="lAddress" placeholder="Address">
 <input type="text" id="lCity" placeholder="City">
 <input type="text" id="lState" placeholder="State" value="MO">
 <input type="text" id="lVehicle" placeholder="Vehicle (year make model)">
-<select id="lDamage"><option value="auto-hail">Auto — Hail Damage</option><option value="auto-dent">Auto — Door Ding/Dent</option><option value="auto-crease">Auto — Crease</option><option value="roof">Roof Damage</option><option value="solar">Solar Panel</option><option value="fleet">Fleet/Dealership</option></select>
-<select id="lSource"><option value="storm-scout">Storm Scout</option><option value="door-knock">Door Knock</option><option value="referral">Referral</option><option value="facebook-ad">Facebook Ad</option><option value="instagram-ad">Instagram Ad</option><option value="walk-in">Walk-In</option><option value="phone-call">Phone Call</option></select>
+<input type="text" id="lVIN" placeholder="VIN (optional)">
+<select id="lDamage"><option value="auto-hail">Hail Damage</option><option value="auto-dent">Door Ding / Dent</option><option value="auto-crease">Crease</option><option value="auto-multiple">Multiple Dents</option><option value="detail">Detailing</option><option value="paint-correction">Paint Correction</option><option value="ceramic">Ceramic Coating</option></select>
+<select id="lSource"><option value="phone-call">Phone Call</option><option value="text-message">Text Message</option><option value="walk-in">Walk-In</option><option value="facebook-ad">Facebook Ad</option><option value="instagram-ad">Instagram Ad</option><option value="google">Google Search</option><option value="referral">Referral</option><option value="insurance">Insurance Referral</option><option value="door-knock">Door Knock</option><option value="storm-scout">Storm Scout</option><option value="website">Website</option></select>
+<select id="lInsurance"><option value="">Insurance (optional)</option><option value="state-farm">State Farm</option><option value="geico">GEICO</option><option value="progressive">Progressive</option><option value="allstate">Allstate</option><option value="usaa">USAA</option><option value="farmers">Farmers</option><option value="liberty-mutual">Liberty Mutual</option><option value="nationwide">Nationwide</option><option value="other">Other</option><option value="no-insurance">No Insurance / Cash</option></select>
 <textarea id="lNotes" placeholder="Notes..." rows="2"></textarea>
-<div style="display:flex;gap:8px"><button class="action-btn" onclick="saveLead()">SAVE LEAD</button><button class="action-btn secondary" onclick="hideAddLead()">CANCEL</button></div>
+</div>
+
+<!-- Dealership Lead Fields -->
+<div id="dealershipFields" style="display:none">
+<input type="text" id="lDealerName" placeholder="Dealership / business name">
+<input type="text" id="lDealerContact" placeholder="Contact person">
+<input type="tel" id="lDealerPhone" placeholder="Phone">
+<input type="email" id="lDealerEmail" placeholder="Email">
+<input type="text" id="lDealerAddress" placeholder="Address">
+<input type="text" id="lDealerCity" placeholder="City">
+<input type="text" id="lDealerState" placeholder="State" value="MO">
+<input type="number" id="lDealerLotSize" placeholder="Lot size (approx vehicles)">
+<select id="lDealerType"><option value="new-car">New Car Dealership</option><option value="used-car">Used Car Dealership</option><option value="fleet">Fleet Company</option><option value="rental">Rental Company</option><option value="body-shop">Body Shop</option><option value="insurance-partner">Insurance Partner</option><option value="auction">Auto Auction</option></select>
+<textarea id="lDealerNotes" placeholder="Notes — who you talked to, what they need..." rows="3"></textarea>
+</div>
+
+<div style="display:flex;gap:8px;margin-top:4px">
+<button class="action-btn" onclick="saveLead()">SAVE</button>
+<button class="action-btn secondary" onclick="hideAddLead()">CANCEL</button>
+</div>
 </div>
 </div>
 

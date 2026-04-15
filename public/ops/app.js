@@ -276,80 +276,159 @@ function renderAlerts(alerts){
   }).join('');
 }
 
-// ─── Leads ────────────────────────────────────────────
+// ─── Leads — 3 types ─────────────────────────────────
+var currentLeadType='storm';
+var stormLeads=[],customerLeads=[],dealershipLeads=[];
+
 function loadLeads(){
-  leads=JSON.parse(localStorage.getItem('hs-leads')||'[]');
-  renderLeads();
+  stormLeads=JSON.parse(localStorage.getItem('hs-storm-leads')||'[]');
+  customerLeads=JSON.parse(localStorage.getItem('hs-customer-leads')||'[]');
+  dealershipLeads=JSON.parse(localStorage.getItem('hs-dealer-leads')||'[]');
+  renderAllLeads();
+  // Filter chips
   document.querySelectorAll('.filter-chip').forEach(function(c){
     c.addEventListener('click',function(){
-      document.querySelectorAll('.filter-chip').forEach(function(b){b.classList.remove('active')});
+      var forType=c.dataset.for;
+      document.querySelectorAll('.filter-chip[data-for="'+forType+'"]').forEach(function(b){b.classList.remove('active')});
       c.classList.add('active');
-      renderLeads(c.dataset.lf);
+      renderLeadList(forType,c.dataset.lf);
     });
   });
 }
-function renderLeads(filter){
+
+window.switchLeadType=function(type){
+  currentLeadType=type;
+  document.querySelectorAll('.type-tab').forEach(function(t){t.classList.toggle('active',t.dataset.lt===type)});
+  document.querySelectorAll('.lead-section').forEach(function(s){s.classList.remove('active')});
+  document.getElementById('sec-'+type).classList.add('active');
+  hideAddLead();
+};
+
+function renderAllLeads(){
+  renderLeadList('storm','all');
+  renderLeadList('customer','all');
+  renderLeadList('dealership','all');
+}
+
+function renderLeadList(type,filter){
   filter=filter||'all';
-  var filtered=filter==='all'?leads:leads.filter(function(l){return l.status===filter});
-  var el=document.getElementById('leadsList');
-  if(!filtered.length){el.innerHTML='<div class="data-card"><div class="card-title" style="color:var(--muted)">No leads yet. Add from storm reports or manually.</div></div>';return}
+  var arr=type==='storm'?stormLeads:type==='customer'?customerLeads:dealershipLeads;
+  var filtered=filter==='all'?arr:arr.filter(function(l){return l.status===filter});
+  var elId=type+'LeadsList';
+  var el=document.getElementById(elId);
+  if(!el) return;
+
+  if(!filtered.length){
+    var msg=type==='storm'?'No storm leads yet. Add from map or scout tab.':type==='customer'?'No customers yet. Add when someone calls or walks in.':'No dealership accounts yet.';
+    el.innerHTML='<div class="data-card"><div class="card-title" style="color:var(--muted)">'+msg+'</div></div>';
+    return;
+  }
+
   el.innerHTML=filtered.map(function(l,i){
-    var bc=l.status==='new'?'badge-cyan':l.status==='contacted'?'badge-amber':l.status==='scheduled'?'badge-green':'badge-red';
+    var bc=getStatusBadge(l.status);
+    var title=type==='dealership'?(l.dealerName||'Dealership #'+(i+1)):type==='storm'?(l.area||l.location||'Storm Zone #'+(i+1)):(l.name||'Customer #'+(i+1));
+    var meta='';
+    if(type==='storm') meta=(l.county?'<span>'+l.county+' Co, '+l.state+'</span>':'')+(l.hailSize?'<span>'+l.hailSize+'" hail</span>':'')+(l.stormEvent?'<span>'+l.stormEvent+'</span>':'');
+    if(type==='customer') meta=(l.phone?'<span>'+l.phone+'</span>':'')+(l.vehicle?'<span>'+l.vehicle+'</span>':'')+(l.damageType?'<span>'+l.damageType+'</span>':'')+(l.source?'<span>via '+l.source+'</span>':'');
+    if(type==='dealership') meta=(l.dealerContact?'<span>'+l.dealerContact+'</span>':'')+(l.dealerPhone?'<span>'+l.dealerPhone+'</span>':'')+(l.dealerType?'<span>'+l.dealerType+'</span>':'')+(l.lotSize?'<span>~'+l.lotSize+' vehicles</span>':'');
+
+    var actions='';
+    var phone=type==='dealership'?l.dealerPhone:l.phone;
+    if(phone) actions+='<a class="card-btn red" href="tel:'+phone+'">Call</a><a class="card-btn" href="sms:'+phone+'">Text</a>';
+    actions+='<button class="card-btn" onclick="nextStatus(\''+type+'\','+i+')">Next Status</button>';
+    actions+='<button class="card-btn" onclick="deleteLead(\''+type+'\','+i+')" style="color:var(--red)">Delete</button>';
+
     return '<div class="data-card">'+
-      '<div class="card-head"><span class="card-title">'+(l.name||l.location||'Lead #'+(i+1))+'</span><span class="card-badge '+bc+'">'+l.status+'</span></div>'+
-      '<div class="card-meta">'+(l.phone?'<span>'+l.phone+'</span>':'')+(l.vehicle?'<span>'+l.vehicle+'</span>':'')+'<span>'+(l.damageType||l.damage||'')+'</span>'+(l.city?'<span>'+l.city+', '+l.state+'</span>':'')+'</div>'+
-      '<div class="card-actions">'+
-        (l.phone?'<a class="card-btn red" href="tel:'+l.phone+'">Call</a><a class="card-btn" href="sms:'+l.phone+'">Text</a>':'') +
-        '<button class="card-btn" onclick="updateLeadStatus('+i+')">Next Status</button>'+
-        '<button class="card-btn" onclick="deleteLead('+i+')" style="color:var(--red)">Delete</button>'+
-      '</div></div>';
+      '<div class="card-head"><span class="card-title">'+title+'</span><span class="card-badge '+bc+'">'+l.status+'</span></div>'+
+      '<div class="card-meta">'+meta+'</div>'+
+      (l.notes?'<div class="card-meta" style="margin-top:4px"><span style="color:#666">'+l.notes+'</span></div>':'')+
+      '<div class="card-actions">'+actions+'</div></div>';
   }).join('');
 }
 
-window.showAddLead=function(){document.getElementById('addLeadForm').style.display='block'};
-window.hideAddLead=function(){document.getElementById('addLeadForm').style.display='none'};
-window.saveLead=function(){
-  var l={
-    name:document.getElementById('lName').value,
-    phone:document.getElementById('lPhone').value,
-    email:document.getElementById('lEmail').value,
-    address:document.getElementById('lAddress').value,
-    city:document.getElementById('lCity').value,
-    state:document.getElementById('lState').value,
-    vehicle:document.getElementById('lVehicle').value,
-    damageType:document.getElementById('lDamage').value,
-    source:document.getElementById('lSource').value,
-    notes:document.getElementById('lNotes').value,
-    status:'new',
-    createdAt:new Date().toISOString()
-  };
-  leads.unshift(l);
-  localStorage.setItem('hs-leads',JSON.stringify(leads));
-  renderLeads();
-  hideAddLead();
-  // Also POST to server
-  fetch('/api/leads',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(l)}).catch(function(){});
-  ['lName','lPhone','lEmail','lAddress','lCity','lVehicle','lNotes'].forEach(function(id){document.getElementById(id).value=''});
+function getStatusBadge(s){
+  if(['new','scouted','prospecting'].indexOf(s)>=0) return 'badge-cyan';
+  if(['contacted','door-knocked','pitched'].indexOf(s)>=0) return 'badge-amber';
+  if(['estimate sent','contract sent'].indexOf(s)>=0) return 'badge-amber';
+  if(['appointment booked','booked','active','scheduled'].indexOf(s)>=0) return 'badge-green';
+  if(['completed','paid','renewal'].indexOf(s)>=0) return 'badge-green';
+  if(['lost','insurance filed','in progress'].indexOf(s)>=0) return 'badge-red';
+  return 'badge-cyan';
+}
+
+window.showAddLead=function(type){
+  currentLeadType=type||currentLeadType;
+  document.getElementById('addLeadForm').style.display='block';
+  document.getElementById('stormFields').style.display=currentLeadType==='storm'?'block':'none';
+  document.getElementById('customerFields').style.display=currentLeadType==='customer'?'block':'none';
+  document.getElementById('dealershipFields').style.display=currentLeadType==='dealership'?'block':'none';
+  var titles={storm:'New Storm Lead',customer:'New Customer',dealership:'New Dealership Account'};
+  document.getElementById('formTitle').textContent=titles[currentLeadType]||'New Lead';
 };
+window.hideAddLead=function(){document.getElementById('addLeadForm').style.display='none'};
+
+window.saveLead=function(){
+  var l={status:'new',createdAt:new Date().toISOString()};
+  if(currentLeadType==='storm'){
+    l.type='storm';l.area=document.getElementById('lStormArea').value;
+    l.county=document.getElementById('lStormCounty').value;l.state=document.getElementById('lStormState').value;
+    l.stormEvent=document.getElementById('lStormEvent').value;l.damageType=document.getElementById('lStormDamage').value;
+    l.hailSize=document.getElementById('lStormHailSize').value;l.notes=document.getElementById('lStormNotes').value;
+    l.status='scouted';
+    stormLeads.unshift(l);localStorage.setItem('hs-storm-leads',JSON.stringify(stormLeads));
+  } else if(currentLeadType==='customer'){
+    l.type='customer';l.name=document.getElementById('lName').value;l.phone=document.getElementById('lPhone').value;
+    l.email=document.getElementById('lEmail').value;l.address=document.getElementById('lAddress').value;
+    l.city=document.getElementById('lCity').value;l.state=document.getElementById('lState').value;
+    l.vehicle=document.getElementById('lVehicle').value;l.damageType=document.getElementById('lDamage').value;
+    l.source=document.getElementById('lSource').value;l.insurance=document.getElementById('lInsurance').value;
+    l.notes=document.getElementById('lNotes').value;
+    customerLeads.unshift(l);localStorage.setItem('hs-customer-leads',JSON.stringify(customerLeads));
+  } else {
+    l.type='dealership';l.dealerName=document.getElementById('lDealerName').value;
+    l.dealerContact=document.getElementById('lDealerContact').value;l.dealerPhone=document.getElementById('lDealerPhone').value;
+    l.dealerEmail=document.getElementById('lDealerEmail').value;l.dealerAddress=document.getElementById('lDealerAddress').value;
+    l.dealerCity=document.getElementById('lDealerCity').value;l.dealerState=document.getElementById('lDealerState').value;
+    l.lotSize=document.getElementById('lDealerLotSize').value;l.dealerType=document.getElementById('lDealerType').value;
+    l.notes=document.getElementById('lDealerNotes').value;l.status='prospecting';
+    dealershipLeads.unshift(l);localStorage.setItem('hs-dealer-leads',JSON.stringify(dealershipLeads));
+  }
+  renderAllLeads();hideAddLead();
+  fetch('/api/leads',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(l)}).catch(function(){});
+};
+
 window.addLeadFromMap=function(loc,county,state){
-  leads.unshift({location:loc,county:county,state:state,damageType:'auto-hail',source:'storm-scout',status:'new',createdAt:new Date().toISOString()});
-  localStorage.setItem('hs-leads',JSON.stringify(leads));
-  map.closePopup();
+  stormLeads.unshift({type:'storm',area:loc,location:loc,county:county,state:state,damageType:'auto-hail',source:'storm-scout',status:'scouted',createdAt:new Date().toISOString()});
+  localStorage.setItem('hs-storm-leads',JSON.stringify(stormLeads));
+  renderAllLeads();map.closePopup();
 };
 window.addLeadFromZone=function(county,state){
-  leads.unshift({location:county+' County zone',county:county,state:state,damageType:'auto-hail',source:'storm-scout',status:'new',createdAt:new Date().toISOString()});
-  localStorage.setItem('hs-leads',JSON.stringify(leads));
-  renderLeads();
+  stormLeads.unshift({type:'storm',area:county+' County zone',county:county,state:state,damageType:'auto-hail',source:'storm-scout',status:'scouted',createdAt:new Date().toISOString()});
+  localStorage.setItem('hs-storm-leads',JSON.stringify(stormLeads));
+  renderAllLeads();
 };
-window.updateLeadStatus=function(i){
-  var order=['new','contacted','estimate sent','appointment booked','scheduled','insurance filed','in progress','completed','lost'];
-  var cur=order.indexOf(leads[i].status);
-  leads[i].status=order[(cur+1)%order.length];
-  localStorage.setItem('hs-leads',JSON.stringify(leads));
-  renderLeads();
+
+var statusOrders={
+  storm:['scouted','door-knocked','contacted','estimate sent','booked','in progress','completed','lost'],
+  customer:['new','contacted','estimate sent','appointment booked','insurance filed','in progress','completed','paid','lost'],
+  dealership:['prospecting','pitched','contract sent','active','renewal','lost']
 };
-window.deleteLead=function(i){
-  if(confirm('Delete this lead?')){leads.splice(i,1);localStorage.setItem('hs-leads',JSON.stringify(leads));renderLeads()}
+window.nextStatus=function(type,i){
+  var arr=type==='storm'?stormLeads:type==='customer'?customerLeads:dealershipLeads;
+  var order=statusOrders[type];
+  var cur=order.indexOf(arr[i].status);
+  arr[i].status=order[(cur+1)%order.length];
+  var key=type==='storm'?'hs-storm-leads':type==='customer'?'hs-customer-leads':'hs-dealer-leads';
+  localStorage.setItem(key,JSON.stringify(arr));
+  renderLeadList(type);
+};
+window.deleteLead=function(type,i){
+  if(!confirm('Delete this lead?')) return;
+  var arr=type==='storm'?stormLeads:type==='customer'?customerLeads:dealershipLeads;
+  arr.splice(i,1);
+  var key=type==='storm'?'hs-storm-leads':type==='customer'?'hs-customer-leads':'hs-dealer-leads';
+  localStorage.setItem(key,JSON.stringify(arr));
+  renderLeadList(type);
 };
 
 // ─── Templates ────────────────────────────────────────
