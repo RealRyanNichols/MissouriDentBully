@@ -40,9 +40,22 @@ function initApp(){
   loadStorms();
   loadLeads();
   loadTemplates();
-  setInterval(loadStorms,5*60*1000);
-  document.getElementById('stateFilter').addEventListener('change',loadStorms);
+  // Auto-refresh every 3 minutes
+  setInterval(loadStorms,3*60*1000);
+  document.getElementById('stateFilter').addEventListener('change',function(){
+    // Reset swath when changing state
+    if(layerState.mesh){
+      meshSwathLayers.forEach(function(l){map.removeLayer(l)});
+      meshSwathLayers=[];
+      layerState.mesh=false;
+      document.getElementById('btnMesh').classList.remove('active');
+    }
+    loadStorms();
+  });
   document.getElementById('searchInput').addEventListener('input',debounce(filterReports,300));
+  // Set today's date in the date picker
+  var today=new Date().toISOString().split('T')[0];
+  document.getElementById('historyDate').value=today;
 }
 
 // ─── Map ──────────────────────────────────────────────
