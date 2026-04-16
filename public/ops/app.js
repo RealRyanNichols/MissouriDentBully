@@ -110,67 +110,105 @@ window.toggleLayer=function(id){
   if(btn) btn.classList.toggle('active',layerState[id]);
 };
 
-// ─── HailStrike Swath Engine v3 ───────────────────────
+// ─── HailStrike Swath Engine ──────────────────────────
+// Uses NWS severe thunderstorm warning POLYGONS as the swath shapes.
+// Each warning polygon tracks ONE storm cell — that IS the swath.
+// SPC spotter reports are overlaid as confirmation points inside.
 function loadMESHData(){
   meshSwathLayers.forEach(function(l){map.removeLayer(l)});
   meshSwathLayers=[];
-
-  // Hide dot markers
   markers.forEach(function(m){map.removeLayer(m)});
-  document.getElementById('statusText').textContent='Building swaths...';
+  document.getElementById('statusText').textContent='Loading storm warning polygons...';
 
-  // Try to get NHI radar hail data first, merge with SPC reports
-  var stations=['KEAX','KLSX','KSGF'];
-  var fetches=stations.map(function(st){
-    return fetch('/api/nexrad?action=hail&station='+st).then(function(r){return r.json()}).catch(function(){return{hailCells:[]}});
-  });
-
-  Promise.all(fetches).then(function(results){
-    // Merge NHI cells with SPC reports for best coverage
-    var allPoints=allReports.slice();
-
-    results.forEach(function(data){
-      (data.hailCells||[]).forEach(function(cell){
-        if(cell.lat&&cell.lon&&cell.mehs&&cell.mehs>0){
-          allPoints.push({
-            lat:cell.lat,lon:cell.lon,
-            size:cell.mehs,
-            sizeLabel:cell.mehs>=2.75?'Baseball':cell.mehs>=1.75?'Golf Ball':cell.mehs>=1?'Quarter':'Small',
-            location:'Radar Detection',county:'',state:'',
-            time:cell.scanKey?cell.scanKey.split('_').slice(-3,-1).join(''):'',
-            source:'NHI',poh:cell.poh,posh:cell.posh
-          });
-        }
-      });
+  // Fetch NWS severe thunderstorm warnings WITH geometry
+  // These polygons ARE the storm paths — each one follows a cell
+  fetch('https://api.weather.gov/alerts/active?status=actual&message_type=alert&event=Severe%20Thunderstorm%20Warning',{
+    headers:{'User-Agent':'HailStrikeOps/1.0','Accept':'application/geo+json'}
+  })
+  .then(function(r){return r.json()})
+  .then(function(data){
+    var features=data.features||[];
+    var hailWarnings=features.filter(function(f){
+      var desc=((f.properties.description||'')+(f.properties.parameters&&f.properties.parameters.hailSize?f.properties.parameters.hailSize[0]:'')).toLowerCase();
+      return desc.indexOf('hail')!==-1;
     });
 
-    if(!allPoints.length){
-      document.getElementById('statusText').textContent='No hail data available';
-      markers.forEach(function(m){m.addTo(map)});
-      return;
+    var swathCount=0;
+
+    // Draw each warning polygon as a swath
+    hailWarnings.forEach(function(f){
+      if(!f.geometry||!f.geometry.coordinates) return;
+      try{
+        var coords=f.geometry.coordinates;
+        var polys=f.geometry.type==='Polygon'?[coords]:coords; // handle MultiPolygon
+
+        polys.forEach(function(polyCoords){
+          var latLngs=polyCoords[0].map(function(c){return[c[1],c[0]]});
+
+          // Extract hail size from warning text
+          var desc=f.properties.description||'';
+          var hailMatch=desc.match(/(\d+(?:\.\d+)?)\s*inch\s*hail/i);
+          var hailSize=hailMatch?parseFloat(hailMatch[1]):1;
+          var isGiant=hailSize>=2;
+
+          // Outer glow
+          var glowCol=isGiant?'#ffcc80':'#fff9c4';
+          // We can't easily expand a polygon, so skip outer glow for now
+
+          // Main swath fill — the warning polygon IS the hail zone
+          var mainCol=hailSize>=2.5?'#d32f2f':hailSize>=1.75?'#e65100':hailSize>=1?'#ff9800':'#ffc107';
+          var mainPoly=L.polygon(latLngs,{
+            fillColor:mainCol,fillOpacity:0.25,
+            color:mainCol,weight:1.5,opacity:0.4,
+            smoothFactor:2
+          });
+          mainPoly.bindPopup(
+            '<b style="color:'+mainCol+'">'+f.properties.event+'</b><br>'+
+            (hailSize?'<b>Hail: '+hailSize+'"</b><br>':'')+
+            '<span style="color:#888">'+f.properties.areaDesc+'</span><br>'+
+            '<span style="font-size:11px;color:#666">'+desc.substring(0,250)+'...</span>'
+          );
+          mainPoly.addTo(map);
+          meshSwathLayers.push(mainPoly);
+          swathCount++;
+        });
+      }catch(e){console.error('Warning polygon error:',e)}
+    });
+
+    // Also draw SPC report-based swaths for areas without active warnings
+    // (historical data or where warnings have expired)
+    if(allReports.length>0){
+      var tracks=buildTracks(allReports);
+      tracks.forEach(function(t){paintSwath(t)});
+      swathCount+=tracks.length;
     }
 
-    // Build tracks and paint swaths
-    var tracks=buildTracks(allPoints);
-    tracks.forEach(function(t){paintSwath(t)});
-    document.getElementById('statusText').textContent=tracks.length+' storm swath'+(tracks.length!==1?'s':'')+' from '+allPoints.length+' data points (SPC + radar)';
-  }).catch(function(){
-    // Fallback to SPC only
-    if(!allReports.length){
-      document.getElementById('statusText').textContent='No data';
-      return;
+    if(swathCount===0){
+      document.getElementById('statusText').textContent='No hail swaths — no active warnings or reports';
+      markers.forEach(function(m){m.addTo(map)});
+    } else {
+      document.getElementById('statusText').textContent=swathCount+' hail swaths ('+hailWarnings.length+' active warnings + SPC reports)';
     }
-    var tracks=buildTracks(allReports);
-    tracks.forEach(function(t){paintSwath(t)});
-    document.getElementById('statusText').textContent=tracks.length+' swaths from SPC reports';
+  })
+  .catch(function(e){
+    console.error('Warning fetch failed:',e);
+    // Fallback to SPC reports only
+    if(allReports.length>0){
+      var tracks=buildTracks(allReports);
+      tracks.forEach(function(t){paintSwath(t)});
+      document.getElementById('statusText').textContent=tracks.length+' swaths from SPC reports';
+    } else {
+      document.getElementById('statusText').textContent='Failed to load swath data';
+      markers.forEach(function(m){m.addTo(map)});
+    }
   });
 }
 
-// Build storm tracks — storms move WEST to EAST. Period.
+// Build storm tracks — storms move WEST to EAST
 function buildTracks(reports){
   if(!reports.length) return [];
 
-  // Sort by longitude (west to east) — this IS the storm direction
+  // Sort by longitude (west to east)
   var pts=reports.slice().sort(function(a,b){return a.lon-b.lon});
   var used=[];for(var i=0;i<pts.length;i++)used[i]=false;
   var tracks=[];
@@ -178,34 +216,26 @@ function buildTracks(reports){
   for(var i=0;i<pts.length;i++){
     if(used[i])continue;
     var track=[pts[i]];used[i]=true;
-
-    // Find the next point that is EAST of this one (higher longitude)
-    // and within reasonable distance (same storm cell)
     var current=pts[i];
+
     for(var j=i+1;j<pts.length;j++){
       if(used[j])continue;
-      var candidate=pts[j];
+      var c=pts[j];
 
-      // Must be east of current (or very slightly west — allow 0.05° tolerance)
-      if(candidate.lon<current.lon-0.05) continue;
+      // Must be east (or nearly same longitude)
+      if(c.lon<current.lon-0.1) continue;
 
-      // Must be within 40km
-      var d=distKm(current.lat,current.lon,candidate.lat,candidate.lon);
-      if(d>40||d<0.5) continue;
+      // Within 80km
+      var d=distKm(current.lat,current.lon,c.lat,c.lon);
+      if(d>80||d<0.3) continue;
 
-      // Must not deviate too far north or south (within ~30km latitude band)
-      var latDiffKm=Math.abs(candidate.lat-current.lat)*111.32;
-      if(latDiffKm>30) continue;
+      // Stay within latitude band (50km north/south)
+      if(Math.abs(c.lat-current.lat)*111>50) continue;
 
-      // This point continues the storm track eastward
-      track.push(candidate);
-      used[j]=true;
-      current=candidate;
+      track.push(c);used[j]=true;current=c;
     }
-
     tracks.push(track);
   }
-
   return tracks;
 }
 
