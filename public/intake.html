@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Get Your Free Estimate — Missouri Dent Bully</title>
+<style>
+  :root { --bg:#0D0D0D; --red:#C0392B; --ink:#0D0D0D; --line:#1a1a1a; --mute:#666; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #f5f5f5; color: var(--ink); line-height: 1.5; }
+  header { background: var(--bg); color: #fff; padding: 24px 20px; text-align: center; }
+  header h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
+  header p { color: #bbb; font-size: 14px; margin-top: 6px; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 24px 20px 60px; }
+  .card { background: #fff; border: 2px solid var(--line); padding: 28px; margin-bottom: 20px; }
+  label { display: block; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+  input, select, textarea { width: 100%; padding: 12px; border: 2px solid #ddd; background: #fff; font-size: 15px; font-family: inherit; border-radius: 2px; }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--red); }
+  .field { margin-bottom: 18px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .drop { border: 2px dashed #bbb; padding: 32px 16px; text-align: center; color: var(--mute); cursor: pointer; transition: all 0.15s; }
+  .drop.over { border-color: var(--red); background: #fff5f4; color: var(--red); }
+  .drop strong { color: var(--ink); display: block; font-size: 16px; margin-bottom: 4px; }
+  .previews { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px,1fr)); gap: 8px; margin-top: 12px; }
+  .preview { position: relative; aspect-ratio: 1; background: #000; overflow: hidden; }
+  .preview img { width: 100%; height: 100%; object-fit: cover; }
+  .preview button { position: absolute; top: 4px; right: 4px; background: #000; color: #fff; border: none; width: 22px; height: 22px; cursor: pointer; font-size: 14px; line-height: 1; }
+  .submit { width: 100%; padding: 18px; background: var(--red); color: #fff; border: none; font-size: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; cursor: pointer; border-radius: 2px; }
+  .submit:hover { background: #a8331f; }
+  .submit:disabled { background: #888; cursor: wait; }
+  .msg { padding: 14px; margin-top: 12px; font-size: 14px; border-radius: 2px; display: none; }
+  .msg.ok { background: #e8f5e9; color: #1b5e20; display: block; }
+  .msg.err { background: #ffebee; color: #b71c1c; display: block; }
+  .hint { font-size: 12px; color: var(--mute); margin-top: 4px; }
+  .req { color: var(--red); }
+  @media (max-width: 520px) { .row, .row-3 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Get Your Free Estimate</h1>
+  <p>Snap a few photos. We'll call you back within the hour.</p>
+</header>
+<div class="wrap">
+  <form id="intake-form" class="card">
+    <div class="field">
+      <label>Your Name <span class="req">*</span></label>
+      <input name="name" required>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Phone <span class="req">*</span></label>
+        <input name="phone" type="tel" required>
+      </div>
+      <div class="field">
+        <label>Email</label>
+        <input name="email" type="email">
+      </div>
+    </div>
+    <div class="row-3">
+      <div class="field">
+        <label>Year <span class="req">*</span></label>
+        <input name="year" required>
+      </div>
+      <div class="field">
+        <label>Make <span class="req">*</span></label>
+        <input name="make" required>
+      </div>
+      <div class="field">
+        <label>Model <span class="req">*</span></label>
+        <input name="model" required>
+      </div>
+    </div>
+    <div class="field">
+      <label>VIN (optional)</label>
+      <input name="vin" maxlength="17">
+      <div class="hint">Helps us verify factory paint & options. Usually on your dash or driver door.</div>
+    </div>
+    <div class="field">
+      <label>Damage Type <span class="req">*</span></label>
+      <select name="damage_type" required>
+        <option value="">Choose one…</option>
+        <option>Hail damage</option>
+        <option>Door ding / dent</option>
+        <option>Crease</option>
+        <option>Body line damage</option>
+        <option>Multiple / Not sure</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Photos <span class="req">*</span></label>
+      <div id="drop" class="drop">
+        <strong>Tap to upload or drag photos here</strong>
+        <span>At least 2 photos — wide shot + close-up</span>
+        <input id="file-input" type="file" accept="image/*" multiple hidden>
+      </div>
+      <div id="previews" class="previews"></div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Insurance Carrier</label>
+        <input name="carrier" placeholder="State Farm, Allstate, etc.">
+      </div>
+      <div class="field">
+        <label>Claim #</label>
+        <input name="claim">
+      </div>
+    </div>
+    <div class="field">
+      <label>How'd you hear about us?</label>
+      <select name="source">
+        <option value="">—</option>
+        <option>Google</option>
+        <option>Facebook</option>
+        <option>Referral / word of mouth</option>
+        <option>Drove by the shop</option>
+        <option>Storm outreach</option>
+        <option>Other</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Best way to reach you?</label>
+      <select name="preferred_contact">
+        <option>Text</option>
+        <option>Call</option>
+        <option>Email</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Anything else?</label>
+      <textarea name="notes" rows="3"></textarea>
+    </div>
+    <button type="submit" class="submit" id="submit-btn">Send It to Jason</button>
+    <div id="msg" class="msg"></div>
+  </form>
+</div>
+<script>
+  const API_BASE = location.origin;
+  const form = document.getElementById('intake-form');
+  const drop = document.getElementById('drop');
+  const fileInput = document.getElementById('file-input');
+  const previews = document.getElementById('previews');
+  const msg = document.getElementById('msg');
+  const submitBtn = document.getElementById('submit-btn');
+  let files = [];
+
+  drop.addEventListener('click', () => fileInput.click());
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', e => {
+    e.preventDefault(); drop.classList.remove('over');
+    addFiles([...e.dataTransfer.files]);
+  });
+  fileInput.addEventListener('change', e => addFiles([...e.target.files]));
+
+  function addFiles(newFiles) {
+    for (const f of newFiles) {
+      if (!f.type.startsWith('image/')) continue;
+      if (files.length >= 10) break;
+      files.push(f);
+    }
+    renderPreviews();
+  }
+  function renderPreviews() {
+    previews.innerHTML = '';
+    files.forEach((f, i) => {
+      const url = URL.createObjectURL(f);
+      const div = document.createElement('div');
+      div.className = 'preview';
+      div.innerHTML = '<img src="'+url+'"><button type="button" data-i="'+i+'">×</button>';
+      div.querySelector('button').onclick = () => { files.splice(i,1); renderPreviews(); };
+      previews.appendChild(div);
+    });
+  }
+
+  function fileToBase64(f) {
+    return new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res({ name: f.name, type: f.type, size: f.size, data: r.result.split(',')[1] });
+      r.onerror = rej;
+      r.readAsDataURL(f);
+    });
+  }
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (files.length < 1) { show('Please add at least one photo.', 'err'); return; }
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sending…';
+    show('', '');
+    try {
+      const data = Object.fromEntries(new FormData(form));
+      const photos = await Promise.all(files.map(fileToBase64));
+      const res = await fetch(API_BASE + '/api/intake', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...data, photos })
+      });
+      if (!res.ok) throw new Error('Server error');
+      show("Got it. Jason will reach out shortly. You can also call or text 636-385-2928.", 'ok');
+      form.reset(); files = []; renderPreviews();
+    } catch (err) {
+      show('Something went wrong. Please call or text 636-385-2928.', 'err');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Send It to Jason';
+    }
+  });
+  function show(text, cls) {
+    msg.textContent = text;
+    msg.className = 'msg ' + (cls||'');
+  }
+</script>
+</body>
+</html>
