@@ -88,6 +88,8 @@ window.toggleLayer=function(id){
     } else {
       meshSwathLayers.forEach(function(l){map.removeLayer(l)});
       meshSwathLayers=[];
+      // Bring dots back
+      markers.forEach(function(m){m.addTo(map)});
     }
   }
 
@@ -104,13 +106,20 @@ function loadMESHData(){
     return;
   }
 
+  // Hide the regular dot markers when swath is on
+  markers.forEach(function(m){map.removeLayer(m)});
+
   // Group reports into storm tracks
   var tracks=buildTracks(allReports);
   tracks.forEach(function(t){paintSwath(t)});
   document.getElementById('statusText').textContent=tracks.length+' hail swath'+(tracks.length!==1?'s':'')+' from '+allReports.length+' reports';
 }
 
-// Group nearby reports into storm tracks
+// Build storm tracks — each track follows one storm's path
+// Storms move roughly SW to NE. Link reports that are:
+// 1. Close in time (within ~2 hours)
+// 2. Along the same general direction of travel
+// 3. Within reasonable distance for storm motion (~50km between consecutive reports)
 function buildTracks(reports){
   var pts=reports.slice().sort(function(a,b){return(a.time||'').localeCompare(b.time||'')});
   var used=[];for(var i=0;i<pts.length;i++)used[i]=false;
@@ -119,19 +128,26 @@ function buildTracks(reports){
   for(var i=0;i<pts.length;i++){
     if(used[i])continue;
     var track=[pts[i]];used[i]=true;
-    var changed=true;
-    while(changed){
-      changed=false;
-      for(var j=0;j<pts.length;j++){
-        if(used[j])continue;
-        for(var k=0;k<track.length;k++){
-          if(distKm(track[k].lat,track[k].lon,pts[j].lat,pts[j].lon)<60){
-            track.push(pts[j]);used[j]=true;changed=true;break;
-          }
-        }
+
+    // Walk forward in time, find the next report along this storm's path
+    var lastPt=pts[i];
+    for(var j=i+1;j<pts.length;j++){
+      if(used[j])continue;
+      var d=distKm(lastPt.lat,lastPt.lon,pts[j].lat,pts[j].lon);
+      // Must be within 50km of the last point in the track
+      if(d>50)continue;
+      // Check bearing — storms generally move SW to NE (180-360 range ok)
+      // But don't be too strict — storms can wobble
+      if(track.length>=2){
+        var prevBearing=bear(track[track.length-2].lat,track[track.length-2].lon,lastPt.lat,lastPt.lon);
+        var newBearing=bear(lastPt.lat,lastPt.lon,pts[j].lat,pts[j].lon);
+        var bearingDiff=Math.abs(newBearing-prevBearing);
+        if(bearingDiff>180)bearingDiff=360-bearingDiff;
+        // Allow up to 90° deviation
+        if(bearingDiff>90)continue;
       }
+      track.push(pts[j]);used[j]=true;lastPt=pts[j];
     }
-    track.sort(function(a,b){return(a.time||'').localeCompare(b.time||'')});
     tracks.push(track);
   }
   return tracks;
@@ -147,13 +163,26 @@ function paintSwath(track){
   var halfW=maxSize>=2.75?10:maxSize>=1.75?7:maxSize>=1?5:3;
 
   if(track.length===1){
-    // Single point — just a transparent circle
+    // Single point — transparent oval showing estimated hail coverage
     var r=track[0];
-    var c=L.circle([r.lat,r.lon],{
-      radius:halfW*1000,fillColor:'#e65100',fillOpacity:0.2,
-      color:'#e65100',weight:1.5,opacity:0.4
+    // Hail from a supercell typically falls in an elongated area
+    // Stretch it along the typical storm motion (SW to NE, ~230° bearing)
+    var stormBearing=230; // typical supercell motion
+    var len=halfW*1.5; // elongate along storm path
+    var pts=[];
+    // Build an elongated ellipse shape
+    for(var a=0;a<360;a+=15){
+      var rad=a*Math.PI/180;
+      var stretch=(Math.abs(Math.cos(rad-stormBearing*Math.PI/180))*0.6+0.4);
+      var dist=halfW*stretch;
+      pts.push(offset(r.lat,r.lon,a,dist));
+    }
+    var swathColor=r.size>=2.75?'#d32f2f':r.size>=1.75?'#e65100':'#f57f17';
+    var shape=L.polygon(pts,{
+      fillColor:swathColor,fillOpacity:0.2,
+      color:swathColor,weight:1,opacity:0.3,smoothFactor:3
     });
-    c.addTo(map);meshSwathLayers.push(c);
+    shape.addTo(map);meshSwathLayers.push(shape);
     return;
   }
 
