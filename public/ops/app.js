@@ -53,8 +53,9 @@ function initApp(){
     loadStorms();
   });
   document.getElementById('searchInput').addEventListener('input',debounce(filterReports,300));
-  // Set today's date in the date picker
-  var today=new Date().toISOString().split('T')[0];
+  // Set today's date in the date picker — use LOCAL time, not UTC
+  var now=new Date();
+  var today=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
   document.getElementById('historyDate').value=today;
 }
 
