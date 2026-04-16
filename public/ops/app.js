@@ -560,7 +560,7 @@ function renderMap(reports){
         '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">'+
           '<button class="card-btn red" onclick="addLeadFromMap(\''+r.location.replace(/'/g,'')+'\',\''+r.county+'\',\''+r.state+'\')">+ Lead</button>'+
           '<button class="card-btn" onclick="findBusinesses('+r.lat+','+r.lon+')">Find Shops</button>'+
-          '<a class="card-btn" href="https://www.google.com/maps/search/?api=1&query='+r.lat+','+r.lon+'" target="_blank">Directions</a>'+
+          '<button class="card-btn" onclick="getDirections('+r.lat+','+r.lon+')">Directions</button>'+
           '<a class="card-btn" href="https://www.facebook.com/search/posts/?q=hail+'+encodeURIComponent(r.location)+'" target="_blank">FB Search</a>'+
         '</div>'+
       '</div>';
@@ -598,7 +598,7 @@ function renderReports(reports){
       (r.comments?'<div class="card-meta" style="margin-top:4px"><span style="color:#888;line-height:1.4">'+r.comments+'</span></div>':'')+
       '<div class="card-actions">'+
         '<button class="card-btn" onclick="flyTo('+r.lat+','+r.lon+')">View Map</button>'+
-        '<a class="card-btn" href="'+mapsUrl+'" target="_blank">Directions</a>'+
+        '<button class="card-btn" onclick="getDirections('+r.lat+','+r.lon+')">Directions</button>'+
         '<button class="card-btn" onclick="findBusinesses('+r.lat+','+r.lon+')">Find Shops</button>'+
         '<button class="card-btn red" onclick="addLeadFromMap(\''+r.location.replace(/'/g,'')+'\',\''+r.county+'\',\''+r.state+'\')">+ Lead</button>'+
       '</div>'+
@@ -964,6 +964,55 @@ window.viewThread=function(threadId){
 };
 
 // ─── Helpers ──────────────────────────────────────────
+// ─── My Location ──────────────────────────────────────
+var myLat=null,myLon=null,myLocMarker=null;
+
+window.showMyLocation=function(){
+  if(!navigator.geolocation){alert('Location not available on this device');return}
+  document.getElementById('statusText').textContent='Getting your location...';
+  navigator.geolocation.getCurrentPosition(function(pos){
+    myLat=pos.coords.latitude;
+    myLon=pos.coords.longitude;
+
+    // Remove old marker
+    if(myLocMarker) map.removeLayer(myLocMarker);
+
+    // Add marker for Jason's location — blue pulsing dot
+    myLocMarker=L.circleMarker([myLat,myLon],{
+      radius:8,fillColor:'#2979ff',fillOpacity:1,color:'#fff',weight:3
+    });
+    myLocMarker.bindPopup('<b>You are here</b><br>'+myLat.toFixed(4)+', '+myLon.toFixed(4));
+    myLocMarker.addTo(map);
+
+    // Also add a larger pulse ring
+    var pulse=L.circleMarker([myLat,myLon],{
+      radius:20,fillColor:'#2979ff',fillOpacity:0.15,color:'#2979ff',weight:1,opacity:0.3
+    });
+    pulse.addTo(map);
+    if(myLocMarker._pulseRing) map.removeLayer(myLocMarker._pulseRing);
+    myLocMarker._pulseRing=pulse;
+
+    map.setView([myLat,myLon],9);
+    document.getElementById('statusText').textContent='Location set: '+myLat.toFixed(3)+', '+myLon.toFixed(3);
+    document.getElementById('btnMyLoc').classList.add('active');
+  },function(err){
+    alert('Could not get location. Make sure location services are enabled.');
+    document.getElementById('statusText').textContent='Location failed';
+  },{enableHighAccuracy:true,timeout:10000});
+};
+
+// Get directions FROM my location TO a destination
+window.getDirections=function(destLat,destLon,destName){
+  var url;
+  if(myLat&&myLon){
+    url='https://www.google.com/maps/dir/'+myLat+','+myLon+'/'+destLat+','+destLon;
+  } else {
+    // No location set — just open destination
+    url='https://www.google.com/maps/dir//'+destLat+','+destLon;
+  }
+  window.open(url,'_blank');
+};
+
 function filterReports(){
   var q=document.getElementById('searchInput').value.toLowerCase().trim();
   if(!q){
