@@ -557,7 +557,12 @@ function renderMap(reports){
           :'<div style="color:#6a6a8a;font-size:11px">Demographics loading...</div>')+
         '</div>'+
         (r.comments?'<div style="font-style:italic;color:#888;font-size:11px;margin:4px 0">'+r.comments+'</div>':'')+
-        '<button class="card-btn red" style="margin-top:6px;width:100%" onclick="addLeadFromMap(\''+r.location+'\',\''+r.county+'\',\''+r.state+'\')">+ ADD LEAD</button>'+
+        '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:8px">'+
+          '<button class="card-btn red" onclick="addLeadFromMap(\''+r.location.replace(/'/g,'')+'\',\''+r.county+'\',\''+r.state+'\')">+ Lead</button>'+
+          '<button class="card-btn" onclick="findBusinesses('+r.lat+','+r.lon+')">Find Shops</button>'+
+          '<a class="card-btn" href="https://www.google.com/maps/search/?api=1&query='+r.lat+','+r.lon+'" target="_blank">Directions</a>'+
+          '<a class="card-btn" href="https://www.facebook.com/search/posts/?q=hail+'+encodeURIComponent(r.location)+'" target="_blank">FB Search</a>'+
+        '</div>'+
       '</div>';
 
       m.bindPopup(popup,{maxWidth:300});
@@ -581,14 +586,22 @@ function renderReports(reports){
   });
   el.innerHTML=sorted.slice(0,50).map(function(r){
     var bc=r.size>=2.75?'badge-hotred':r.size>=1.75?'badge-red':r.size>=1?'badge-amber':'badge-cyan';
-    return '<div class="data-card" onclick="flyTo('+r.lat+','+r.lon+')">'+
+    var mapsUrl='https://www.google.com/maps/search/?api=1&query='+r.lat+','+r.lon;
+    return '<div class="data-card">'+
       '<div class="card-head"><span class="card-title">'+r.location+', '+r.state+'</span><span class="card-badge '+bc+'">'+r.size+'" '+r.sizeLabel+'</span></div>'+
-      '<div class="card-meta"><span>'+r.county+' Co.</span><span>'+utcToCentral(r.time)+' CT '+(r.day==='today'?'Today':'Yest.')+'</span><span>'+r.damageLevel+'</span>'+
-      (isMediaVerified(r.comments)?'<span class="card-badge badge-green" style="font-family:var(--font);font-size:9px">MEDIA VERIFIED</span>':'')+
-      (isHomeTerritory(r.comments)?'<span class="card-badge badge-red" style="font-family:var(--font);font-size:9px">HOME ZONE</span>':'')+
-      (getWFO(r.comments)?'<span style="color:#666;font-size:10px">NWS: '+getWFO(r.comments)+'</span>':'')+
+      '<div class="card-meta"><span>'+r.county+' Co.</span><span>'+utcToCentral(r.time)+' CT '+(r.day==='today'?'Today':'Yest.')+'</span><span>'+r.damageLevel+'</span></div>'+
+      '<div class="card-meta" style="margin-top:4px">'+
+        (isHomeTerritory(r.comments)?'<span class="card-badge badge-red" style="font-family:var(--font);font-size:9px">HOME ZONE</span>':'')+
+        (isMediaVerified(r.comments)?'<span class="card-badge badge-green" style="font-family:var(--font);font-size:9px">MEDIA VERIFIED</span>':'')+
+        (getWFO(r.comments)?'<span style="color:#666;font-size:10px">NWS: '+getWFO(r.comments)+'</span>':'')+
       '</div>'+
-      (r.comments?'<div class="card-meta" style="margin-top:4px"><span style="color:#888">'+r.comments+'</span></div>':'')+
+      (r.comments?'<div class="card-meta" style="margin-top:4px"><span style="color:#888;line-height:1.4">'+r.comments+'</span></div>':'')+
+      '<div class="card-actions">'+
+        '<button class="card-btn" onclick="flyTo('+r.lat+','+r.lon+')">View Map</button>'+
+        '<a class="card-btn" href="'+mapsUrl+'" target="_blank">Directions</a>'+
+        '<button class="card-btn" onclick="findBusinesses('+r.lat+','+r.lon+')">Find Shops</button>'+
+        '<button class="card-btn red" onclick="addLeadFromMap(\''+r.location.replace(/'/g,'')+'\',\''+r.county+'\',\''+r.state+'\')">+ Lead</button>'+
+      '</div>'+
     '</div>';
   }).join('');
 }
@@ -1041,17 +1054,28 @@ window.findBusinesses=function(lat,lon){
       dealerEl.innerHTML='<div class="data-card"><div class="card-title" style="color:var(--muted)">No dealerships found within 15 miles</div></div>';
     } else {
       dealerEl.innerHTML=dealers.map(function(b){
+        var mapsUrl='https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(b.name+' '+b.city+' '+b.state);
+        var fbSearch='https://www.facebook.com/search/pages/?q='+encodeURIComponent(b.name+' '+b.city);
         return '<div class="data-card" style="border-left:3px solid var(--red)">'+
           '<div class="card-head"><span class="card-title">'+b.name+'</span><span class="card-badge badge-red">'+b.distance+'</span></div>'+
           '<div class="card-meta" style="flex-direction:column;gap:4px;margin-top:6px">'+
-            (b.address?'<span>'+b.address+(b.city?', '+b.city:'')+(b.state?' '+b.state:'')+'</span>':'')+
+            (b.address?'<span>'+b.address+(b.city?', '+b.city:'')+(b.state?' '+b.state:'')+(b.zip?' '+b.zip:'')+'</span>':'')+
             (b.phone?'<span>Phone: <b>'+b.phone+'</b></span>':'')+
+            (b.email?'<span>Email: <a href="mailto:'+b.email+'">'+b.email+'</a></span>':'')+
             (b.website?'<span>Web: <a href="'+b.website+'" target="_blank">'+b.website.substring(0,40)+'</a></span>':'')+
-            (b.brand?'<span>Brand: '+b.brand+'</span>':'')+
+            (b.brand?'<span>Brand: <b>'+b.brand+'</b></span>':'')+
+            (b.openingHours?'<span>Hours: '+b.openingHours+'</span>':'')+
           '</div>'+
+          (b.facebook||b.instagram||b.twitter?'<div class="card-meta" style="margin-top:4px">'+
+            (b.facebook?'<a href="'+b.facebook+'" target="_blank" style="color:var(--cyan)">Facebook</a>':'')+
+            (b.instagram?'<a href="https://instagram.com/'+b.instagram+'" target="_blank" style="color:var(--cyan)">Instagram</a>':'')+
+            (b.twitter?'<a href="https://twitter.com/'+b.twitter+'" target="_blank" style="color:var(--cyan)">X/Twitter</a>':'')+
+          '</div>':'')+
           '<div class="card-actions">'+
             (b.phone?'<a class="card-btn red" href="tel:'+b.phone+'">Call Now</a><a class="card-btn" href="sms:'+b.phone+'">Text</a>':'')+
-            '<button class="card-btn" onclick="addDealerFromBiz(\''+b.name.replace(/'/g,'')+'\',\''+b.phone+'\',\''+b.city+'\',\''+b.state+'\')">+ Add Lead</button>'+
+            '<a class="card-btn" href="'+fbSearch+'" target="_blank">Find on FB</a>'+
+            '<a class="card-btn" href="'+mapsUrl+'" target="_blank">Directions</a>'+
+            '<button class="card-btn" onclick="addDealerFromBiz(\''+b.name.replace(/'/g,'')+'\',\''+(b.phone||'')+'\',\''+(b.city||'')+'\',\''+(b.state||'')+'\')">+ Lead</button>'+
             '<button class="card-btn" onclick="flyTo('+b.lat+','+b.lon+')">Map</button>'+
           '</div></div>';
       }).join('');
@@ -1064,15 +1088,22 @@ window.findBusinesses=function(lat,lon){
       bodyEl.innerHTML='<div class="data-card"><div class="card-title" style="color:var(--muted)">No body shops found</div></div>';
     } else {
       bodyEl.innerHTML=bodies.map(function(b){
+        var fbSearch='https://www.facebook.com/search/pages/?q='+encodeURIComponent(b.name+' '+(b.city||''));
         return '<div class="data-card" style="border-left:3px solid var(--amber)">'+
           '<div class="card-head"><span class="card-title">'+b.name+'</span><span class="card-badge badge-amber">'+b.distance+'</span></div>'+
           '<div class="card-meta" style="flex-direction:column;gap:4px;margin-top:6px">'+
-            (b.address?'<span>'+b.address+(b.city?', '+b.city:'')+'</span>':'')+
+            (b.address?'<span>'+b.address+(b.city?', '+b.city:'')+(b.state?' '+b.state:'')+'</span>':'')+
             (b.phone?'<span>Phone: <b>'+b.phone+'</b></span>':'')+
             (b.website?'<span><a href="'+b.website+'" target="_blank">Website</a></span>':'')+
+            (b.openingHours?'<span>Hours: '+b.openingHours+'</span>':'')+
           '</div>'+
+          (b.facebook||b.instagram?'<div class="card-meta" style="margin-top:4px">'+
+            (b.facebook?'<a href="'+b.facebook+'" target="_blank" style="color:var(--cyan)">Facebook</a>':'')+
+            (b.instagram?'<a href="https://instagram.com/'+b.instagram+'" target="_blank" style="color:var(--cyan)">Instagram</a>':'')+
+          '</div>':'')+
           '<div class="card-actions">'+
-            (b.phone?'<a class="card-btn" href="tel:'+b.phone+'">Call</a>':'')+
+            (b.phone?'<a class="card-btn" href="tel:'+b.phone+'">Call</a><a class="card-btn" href="sms:'+b.phone+'">Text</a>':'')+
+            '<a class="card-btn" href="'+fbSearch+'" target="_blank">Find on FB</a>'+
             '<button class="card-btn" onclick="flyTo('+b.lat+','+b.lon+')">Map</button>'+
           '</div></div>';
       }).join('');
