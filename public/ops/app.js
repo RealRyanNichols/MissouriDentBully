@@ -166,103 +166,47 @@ function loadMESHData(){
   });
 }
 
-// Build storm tracks using NWS warning motion vectors + SPC report timing
-// Supercells move SW→NE. We follow that bearing and only link reports
-// that are downwind of each other in time order.
+// Build storm tracks — storms move WEST to EAST. Period.
 function buildTracks(reports){
   if(!reports.length) return [];
 
-  var pts=reports.slice().sort(function(a,b){
-    // Sort by time primarily
-    var ta=(a.time||'0000');var tb=(b.time||'0000');
-    if(ta!==tb) return ta.localeCompare(tb);
-    // Same time — sort by latitude (south to north, storm motion)
-    return a.lat-b.lat;
-  });
-
+  // Sort by longitude (west to east) — this IS the storm direction
+  var pts=reports.slice().sort(function(a,b){return a.lon-b.lon});
   var used=[];for(var i=0;i<pts.length;i++)used[i]=false;
   var tracks=[];
-
-  // Typical storm motion: SW to NE (~40-60° bearing)
-  // Storms move at roughly 30-50 mph = 50-80 km/hr
-  var typicalBearing=45; // degrees (NE)
-  var bearingTolerance=60; // allow 60° deviation from typical
-  var maxDistKm=80; // max distance between consecutive reports
-  var maxTimeDiffMin=120; // max 2 hours between consecutive reports
 
   for(var i=0;i<pts.length;i++){
     if(used[i])continue;
     var track=[pts[i]];used[i]=true;
-    var lastIdx=i;
 
-    // Walk forward in time looking for the next report along this storm's path
+    // Find the next point that is EAST of this one (higher longitude)
+    // and within reasonable distance (same storm cell)
+    var current=pts[i];
     for(var j=i+1;j<pts.length;j++){
       if(used[j])continue;
-
-      var last=pts[lastIdx];
       var candidate=pts[j];
 
-      // Check distance
-      var d=distKm(last.lat,last.lon,candidate.lat,candidate.lon);
-      if(d>maxDistKm||d<1) continue; // too far or same spot
+      // Must be east of current (or very slightly west — allow 0.05° tolerance)
+      if(candidate.lon<current.lon-0.05) continue;
 
-      // Check bearing — must be roughly NE of previous point
-      var b=bear(last.lat,last.lon,candidate.lat,candidate.lon);
-      var bDiff=Math.abs(b-typicalBearing);
-      if(bDiff>180)bDiff=360-bDiff;
-      if(bDiff>bearingTolerance) continue; // wrong direction
+      // Must be within 40km
+      var d=distKm(current.lat,current.lon,candidate.lat,candidate.lon);
+      if(d>40||d<0.5) continue;
 
-      // Check time difference
-      var t1=parseInt(last.time||'0');var t2=parseInt(candidate.time||'0');
-      var timeDiff=Math.abs(t2-t1);
-      // Handle day wraparound
-      if(timeDiff>1200) timeDiff=2400-timeDiff;
-      // Convert HHMM diff to minutes roughly
-      var minDiff=Math.floor(timeDiff/100)*60+(timeDiff%100);
-      if(minDiff>maxTimeDiffMin) continue;
+      // Must not deviate too far north or south (within ~30km latitude band)
+      var latDiffKm=Math.abs(candidate.lat-current.lat)*111.32;
+      if(latDiffKm>30) continue;
 
-      // This report fits the storm track
+      // This point continues the storm track eastward
       track.push(candidate);
       used[j]=true;
-      lastIdx=j;
+      current=candidate;
     }
 
     tracks.push(track);
   }
 
-  // Merge very short tracks that are near each other and same direction
-  // (sometimes one storm produces scattered single reports)
-  var merged=[];
-  var mergedUsed=[];for(var i=0;i<tracks.length;i++)mergedUsed[i]=false;
-
-  for(var i=0;i<tracks.length;i++){
-    if(mergedUsed[i])continue;
-    var t=tracks[i].slice();
-    mergedUsed[i]=true;
-
-    if(t.length<=2){
-      // Try to attach to a nearby longer track
-      for(var j=0;j<tracks.length;j++){
-        if(mergedUsed[j]||j===i)continue;
-        var lastOfJ=tracks[j][tracks[j].length-1];
-        var firstOfT=t[0];
-        var d=distKm(lastOfJ.lat,lastOfJ.lon,firstOfT.lat,firstOfT.lon);
-        if(d<40){
-          var b2=bear(lastOfJ.lat,lastOfJ.lon,firstOfT.lat,firstOfT.lon);
-          var bDiff2=Math.abs(b2-typicalBearing);
-          if(bDiff2>180)bDiff2=360-bDiff2;
-          if(bDiff2<bearingTolerance){
-            tracks[j]=tracks[j].concat(t);
-            mergedUsed[i]=true;
-            break;
-          }
-        }
-      }
-    }
-    if(!mergedUsed[i]||t.length>2) merged.push(t);
-  }
-
-  return merged.length?merged:tracks.filter(function(t){return t.length>0});
+  return tracks;
 }
 
 // Paint one storm swath — ONE continuous shape following the storm's path
