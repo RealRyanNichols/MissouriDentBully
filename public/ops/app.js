@@ -265,68 +265,137 @@ function buildTracks(reports){
   return merged.length?merged:tracks.filter(function(t){return t.length>0});
 }
 
-// Paint one storm swath — smooth elongated ellipses like RadarScope
+// Paint one storm swath — ONE continuous shape following the storm's path
 function paintSwath(track){
   if(!track.length)return;
+  var maxSize=0;
+  track.forEach(function(r){if(r.size>maxSize)maxSize=r.size});
+  var halfW=maxSize>=2.75?6:maxSize>=1.75?4.5:maxSize>=1?3.5:2.5;
 
-  // For each report point, draw overlapping elongated ellipses
-  // They blend together into a smooth flowing swath along the storm path
+  if(track.length===1){
+    // Single report — elongated oval along storm direction
+    var r=track[0];
+    var b=45; // default NE storm motion
+    var pts=buildOval(r.lat,r.lon,halfW*2.5,halfW,b);
+    var col=r.size>=2.75?'#e53935':r.size>=1.75?'#f4511e':'#ffa726';
+    L.polygon(pts,{fillColor:'#fff9c4',fillOpacity:0.1,weight:0,smoothFactor:2}).addTo(map);
+    var p=L.polygon(pts,{fillColor:col,fillOpacity:0.18,color:col,weight:0.8,opacity:0.25,smoothFactor:2});
+    p.addTo(map);meshSwathLayers.push(p);
+    return;
+  }
+
+  // Multi-point: build ONE smooth stadium/capsule shape along the entire track
+  // Interpolate extra points between reports for smoothness
+  var interpolated=[];
   for(var i=0;i<track.length;i++){
-    var r=track[i];
-
-    // Determine storm bearing at this point
-    var stormBearing=45; // default NE
-    if(track.length>1){
-      if(i<track.length-1) stormBearing=bear(r.lat,r.lon,track[i+1].lat,track[i+1].lon);
-      else stormBearing=bear(track[i-1].lat,track[i-1].lon,r.lat,r.lon);
+    interpolated.push(track[i]);
+    if(i<track.length-1){
+      // Add 3 intermediate points between each pair
+      var steps=3;
+      for(var s=1;s<=steps;s++){
+        var frac=s/(steps+1);
+        interpolated.push({
+          lat:track[i].lat+(track[i+1].lat-track[i].lat)*frac,
+          lon:track[i].lon+(track[i+1].lon-track[i].lon)*frac,
+          size:track[i].size+(track[i+1].size-track[i].size)*frac
+        });
+      }
     }
+  }
 
-    // Ellipse size based on hail magnitude
-    var majorKm=r.size>=2.75?14:r.size>=1.75?10:r.size>=1?7:5; // along storm
-    var minorKm=r.size>=2.75?6:r.size>=1.75?4.5:r.size>=1?3:2.5; // perpendicular
+  // Compute bearing at each interpolated point
+  var bearings=[];
+  for(var i=0;i<interpolated.length;i++){
+    if(interpolated.length<2){bearings.push(45);continue}
+    if(i===0){
+      bearings.push(bear(interpolated[0].lat,interpolated[0].lon,interpolated[1].lat,interpolated[1].lon));
+    } else if(i===interpolated.length-1){
+      bearings.push(bear(interpolated[i-1].lat,interpolated[i-1].lon,interpolated[i].lat,interpolated[i].lon));
+    } else {
+      var b1=bear(interpolated[i-1].lat,interpolated[i-1].lon,interpolated[i].lat,interpolated[i].lon);
+      var b2=bear(interpolated[i].lat,interpolated[i].lon,interpolated[i+1].lat,interpolated[i+1].lon);
+      bearings.push(avgBearing(b1,b2));
+    }
+  }
 
-    // Draw 3 concentric ellipses for gradient effect
-    var layers=[
-      {majMult:1.6,minMult:1.6,color:'#fff176',opacity:0.08}, // outer yellow
-      {majMult:1.0,minMult:1.0,color:r.size>=2?'#ff7043':'#ffa726',opacity:0.14}, // mid orange
-      {majMult:0.5,minMult:0.5,color:r.size>=2.5?'#e53935':'#f4511e',opacity:0.22} // inner red
-    ];
+  // Build left/right edges with smooth width
+  var leftEdge=[],rightEdge=[];
+  for(var i=0;i<interpolated.length;i++){
+    var w=interpolated[i].size>=2.75?6:interpolated[i].size>=1.75?4.5:interpolated[i].size>=1?3.5:2.5;
+    leftEdge.push(offset(interpolated[i].lat,interpolated[i].lon,(bearings[i]+270)%360,w));
+    rightEdge.push(offset(interpolated[i].lat,interpolated[i].lon,(bearings[i]+90)%360,w));
+  }
 
-    layers.forEach(function(layer){
-      var pts=buildEllipse(
-        r.lat,r.lon,
-        majorKm*layer.majMult,
-        minorKm*layer.minMult,
-        stormBearing
-      );
-      var poly=L.polygon(pts,{
-        fillColor:layer.color,fillOpacity:layer.opacity,
-        color:layer.color,weight:0,smoothFactor:3
-      });
-      poly.addTo(map);meshSwathLayers.push(poly);
-    });
+  // Rounded start cap
+  var startCap=[];
+  var sb=(bearings[0]+180)%360;
+  for(var a=-90;a<=90;a+=15){
+    startCap.push(offset(interpolated[0].lat,interpolated[0].lon,(sb+a+360)%360,halfW));
+  }
+
+  // Rounded end cap
+  var endCap=[];
+  var eb=bearings[bearings.length-1];
+  var last=interpolated[interpolated.length-1];
+  for(var a=-90;a<=90;a+=15){
+    endCap.push(offset(last.lat,last.lon,(eb+a+360)%360,halfW));
+  }
+
+  // Assemble: left edge → end cap → right edge reversed → start cap
+  var outerShape=leftEdge.concat(endCap).concat(rightEdge.reverse()).concat(startCap);
+
+  // Draw outer glow (wider, faint yellow)
+  var outerEdgeL=[],outerEdgeR=[];
+  for(var i=0;i<interpolated.length;i++){
+    var ow=(interpolated[i].size>=2.75?9:interpolated[i].size>=1.75?7:interpolated[i].size>=1?5.5:4);
+    outerEdgeL.push(offset(interpolated[i].lat,interpolated[i].lon,(bearings[i]+270)%360,ow));
+    outerEdgeR.push(offset(interpolated[i].lat,interpolated[i].lon,(bearings[i]+90)%360,ow));
+  }
+  var outerGlow=outerEdgeL.concat(outerEdgeR.reverse());
+  var glowCol=maxSize>=2.75?'#ffcc80':maxSize>=1.75?'#ffe0b2':'#fff9c4';
+  L.polygon(outerGlow,{fillColor:glowCol,fillOpacity:0.1,weight:0,smoothFactor:3}).addTo(map);
+  meshSwathLayers.push(L.polygon(outerGlow));
+
+  // Draw main swath body
+  var mainCol=maxSize>=2.75?'#e53935':maxSize>=1.75?'#f4511e':'#ff9800';
+  var mainSwath=L.polygon(outerShape,{fillColor:mainCol,fillOpacity:0.2,color:mainCol,weight:0.8,opacity:0.3,smoothFactor:3});
+  mainSwath.addTo(map);meshSwathLayers.push(mainSwath);
+
+  // Draw inner core (narrower, darker)
+  if(maxSize>=1.25){
+    var coreL=[],coreR=[];
+    for(var i=0;i<interpolated.length;i++){
+      var cw=interpolated[i].size>=2.75?2.5:interpolated[i].size>=1.75?2:1.5;
+      coreL.push(offset(interpolated[i].lat,interpolated[i].lon,(bearings[i]+270)%360,cw));
+      coreR.push(offset(interpolated[i].lat,interpolated[i].lon,(bearings[i]+90)%360,cw));
+    }
+    var coreShape=coreL.concat(coreR.reverse());
+    var coreCol=maxSize>=2.75?'#b71c1c':'#d84315';
+    L.polygon(coreShape,{fillColor:coreCol,fillOpacity:0.25,weight:0,smoothFactor:3}).addTo(map);
+    meshSwathLayers.push(L.polygon(coreShape));
   }
 }
 
-// Build an ellipse rotated along a bearing
-function buildEllipse(lat,lon,majorKm,minorKm,bearingDeg){
+// Build a smooth oval (elongated ellipse)
+function buildOval(lat,lon,majorKm,minorKm,bearingDeg){
   var pts=[];
-  var steps=36; // smooth circle
-  for(var i=0;i<steps;i++){
-    var angle=(i/steps)*2*Math.PI;
-    // Ellipse in local coords
+  for(var i=0;i<36;i++){
+    var angle=(i/36)*2*Math.PI;
     var dx=majorKm*Math.cos(angle);
     var dy=minorKm*Math.sin(angle);
-    // Rotate by storm bearing
     var bRad=bearingDeg*Math.PI/180;
     var rx=dx*Math.cos(bRad)-dy*Math.sin(bRad);
     var ry=dx*Math.sin(bRad)+dy*Math.cos(bRad);
-    // Convert km offset to lat/lon
-    var newLat=lat+ry/111.32;
-    var newLon=lon+rx/(111.32*Math.cos(lat*Math.PI/180));
-    pts.push([newLat,newLon]);
+    pts.push([lat+ry/111.32,lon+rx/(111.32*Math.cos(lat*Math.PI/180))]);
   }
   return pts;
+}
+
+// Average two bearings properly
+function avgBearing(b1,b2){
+  var x=Math.cos(b1*Math.PI/180)+Math.cos(b2*Math.PI/180);
+  var y=Math.sin(b1*Math.PI/180)+Math.sin(b2*Math.PI/180);
+  return(Math.atan2(y,x)*180/Math.PI+360)%360;
 }
 
 // ─── Geo helpers ──────────────────────────────────────
