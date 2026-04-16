@@ -4,13 +4,13 @@
   // Prevent double-injection
   if (document.getElementById('mdb-chat-widget')) return;
 
-  // ─── Configuration ──────────────────────────────────────────────────────────
+  // --- Configuration ----------------------------------------------------------
   var BASE_URL = '';
-  var GREETING = "Hey! \uD83D\uDC4B I'm the Dent Bully assistant. Got a dent, ding, or hail damage? Tell me what's going on with your vehicle and I'll point you in the right direction \u2014 or get you connected with Jason directly.";
+  var GREETING = "Hey! \uD83D\uDC4B\n\nI'm Jason's assistant at **Dent Bully**.\n\nWhat's going on with your vehicle?\n\n[CHIPS: Hail damage | Door ding / dent | Full detail / ceramic | Just looking around]";
   var STORAGE_KEY = 'mdb-chat-state';
   var STORAGE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
-  // ─── State ──────────────────────────────────────────────────────────────────
+  // --- State ------------------------------------------------------------------
   var isOpen = false;
   var messages = [];
   var isLoading = false;
@@ -18,10 +18,10 @@
   var collectedInfo = { name: null, phone: null, damageType: null, vehicle: null };
   var hasGreeted = false;
 
-  // ─── DOM references ─────────────────────────────────────────────────────────
+  // --- DOM references ---------------------------------------------------------
   var els = {};
 
-  // ─── Detect base URL from script src ────────────────────────────────────────
+  // --- Detect base URL from script src ----------------------------------------
   function detectBaseUrl() {
     var scripts = document.querySelectorAll('script[src]');
     for (var i = 0; i < scripts.length; i++) {
@@ -41,7 +41,7 @@
     }
   }
 
-  // ─── Inject styles ─────────────────────────────────────────────────────────
+  // --- Inject styles ---------------------------------------------------------
   function injectStyles() {
     var style = document.createElement('style');
     style.id = 'mdb-chat-styles';
@@ -87,6 +87,13 @@
       "#mdb-chat-widget .mdb-lead-captured p{color:var(--mdb-white);font-size:13px;margin-bottom:4px}" +
       "#mdb-chat-widget .mdb-lead-captured a{color:var(--mdb-red);font-weight:700;font-size:16px;text-decoration:none;letter-spacing:0.5px}" +
       "#mdb-chat-widget .mdb-lead-captured a:hover{text-decoration:underline}" +
+      "#mdb-chat-widget .mdb-msg p{margin-bottom:8px}" +
+      "#mdb-chat-widget .mdb-msg p:last-child{margin-bottom:0}" +
+      "#mdb-chat-widget .mdb-msg strong{color:#fff;font-weight:700}" +
+      "#mdb-chat-widget .mdb-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-self:flex-start;max-width:85%}" +
+      "#mdb-chat-widget .mdb-chip{background:transparent;color:var(--mdb-white);border:1.5px solid var(--mdb-red);padding:7px 12px;border-radius:2px;cursor:pointer;font-size:13px;font-weight:600;font-family:var(--mdb-font);transition:all 0.15s ease}" +
+      "#mdb-chat-widget .mdb-chip:hover{background:var(--mdb-red);color:#fff}" +
+      "#mdb-chat-widget .mdb-chip:disabled{opacity:0.4;cursor:not-allowed;pointer-events:none}" +
       "@media(max-width:480px){" +
         "#mdb-chat-widget .mdb-bubble{bottom:16px;right:16px}" +
         "#mdb-chat-widget .mdb-window{width:100%;height:100%;bottom:0;right:0;border-radius:0;border:none}" +
@@ -97,7 +104,7 @@
     document.head.appendChild(style);
   }
 
-  // ─── Inject HTML ────────────────────────────────────────────────────────────
+  // --- Inject HTML ------------------------------------------------------------
   function injectHTML() {
     var container = document.createElement('div');
     container.id = 'mdb-chat-widget';
@@ -131,7 +138,7 @@
     document.body.appendChild(container);
   }
 
-  // ─── Cache DOM elements ─────────────────────────────────────────────────────
+  // --- Cache DOM elements -----------------------------------------------------
   function cacheElements() {
     var w = document.getElementById('mdb-chat-widget');
     els.widget = w;
@@ -145,7 +152,7 @@
     els.send = w.querySelector('.mdb-send');
   }
 
-  // ─── Event listeners ───────────────────────────────────────────────────────
+  // --- Event listeners -------------------------------------------------------
   function attachListeners() {
     els.bubble.addEventListener('click', toggleChat);
     els.close.addEventListener('click', toggleChat);
@@ -158,7 +165,7 @@
     });
   }
 
-  // ─── Toggle chat open/close ────────────────────────────────────────────────
+  // --- Toggle chat open/close ------------------------------------------------
   function toggleChat() {
     isOpen = !isOpen;
     if (isOpen) {
@@ -175,14 +182,14 @@
     }
   }
 
-  // ─── Handle send button ────────────────────────────────────────────────────
+  // --- Handle send button ----------------------------------------------------
   function handleSend() {
     var text = els.input.value.trim();
     if (!text || isLoading || leadCaptured) return;
     sendMessage(text);
   }
 
-  // ─── Send message ──────────────────────────────────────────────────────────
+  // --- Send message ----------------------------------------------------------
   function sendMessage(userText) {
     // Add user message
     messages.push({ role: 'user', content: userText });
@@ -223,23 +230,65 @@
       });
   }
 
-  // ─── Render a message in the DOM ───────────────────────────────────────────
+  // --- Render a message in the DOM -------------------------------------------
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function formatBotHtml(text) {
+    var paras = text.split(/\n\s*\n/);
+    return paras.map(function (p) {
+      var safe = escapeHtml(p.trim());
+      safe = safe.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      safe = safe.replace(/\n/g, '<br>');
+      return '<p>' + safe + '</p>';
+    }).join('');
+  }
+  function extractChips(text) {
+    var m = text.match(/\[CHIPS:\s*([^\]]+)\]\s*$/i);
+    if (!m) return { text: text, chips: [] };
+    var chips = m[1].split('|').map(function (s) { return s.trim(); }).filter(Boolean);
+    return { text: text.slice(0, m.index).trim(), chips: chips };
+  }
   function renderMessage(role, content) {
     var div = document.createElement('div');
     div.className = 'mdb-msg ' + (role === 'user' ? 'mdb-user' : 'mdb-bot');
-    div.textContent = content;
-    els.messages.appendChild(div);
+    if (role === 'user') {
+      div.textContent = content;
+      els.messages.appendChild(div);
+    } else {
+      var parsed = extractChips(content);
+      div.innerHTML = formatBotHtml(parsed.text);
+      els.messages.appendChild(div);
+      if (parsed.chips.length) {
+        var row = document.createElement('div');
+        row.className = 'mdb-chips';
+        parsed.chips.forEach(function (label) {
+          var btn = document.createElement('button');
+          btn.className = 'mdb-chip';
+          btn.type = 'button';
+          btn.textContent = label;
+          btn.addEventListener('click', function () {
+            // disable all chips in this row
+            [].forEach.call(row.querySelectorAll('.mdb-chip'), function (b) { b.disabled = true; });
+            if (isLoading || leadCaptured) return;
+            sendMessage(label);
+          });
+          row.appendChild(btn);
+        });
+        els.messages.appendChild(row);
+      }
+    }
     scrollToBottom();
   }
 
-  // ─── Scroll messages to bottom ─────────────────────────────────────────────
+  // --- Scroll messages to bottom ---------------------------------------------
   function scrollToBottom() {
     setTimeout(function () {
       els.messages.scrollTop = els.messages.scrollHeight;
     }, 50);
   }
 
-  // ─── Lead detection ────────────────────────────────────────────────────────
+  // --- Lead detection --------------------------------------------------------
   function checkForLeadInfo() {
     if (leadCaptured) return;
 
@@ -295,7 +344,7 @@
     }
   }
 
-  // ─── Submit lead ───────────────────────────────────────────────────────────
+  // --- Submit lead -----------------------------------------------------------
   function submitLead() {
     if (leadCaptured) return;
     leadCaptured = true;
@@ -329,7 +378,7 @@
     persistState();
   }
 
-  // ─── Show lead captured UI ─────────────────────────────────────────────────
+  // --- Show lead captured UI -------------------------------------------------
   function showLeadCapturedUI() {
     els.inputRow.innerHTML =
       '<div class="mdb-lead-captured">' +
@@ -340,7 +389,7 @@
       '</div>';
   }
 
-  // ─── Persist state to localStorage ─────────────────────────────────────────
+  // --- Persist state to localStorage -----------------------------------------
   function persistState() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
@@ -353,7 +402,7 @@
     } catch (e) { /* localStorage unavailable */ }
   }
 
-  // ─── Restore state from localStorage ───────────────────────────────────────
+  // --- Restore state from localStorage ---------------------------------------
   function restoreState() {
     try {
       var raw = localStorage.getItem(STORAGE_KEY);
@@ -386,7 +435,7 @@
     }
   }
 
-  // ─── Initialize ─────────────────────────────────────────────────────────────
+  // --- Initialize -------------------------------------------------------------
   function init() {
     detectBaseUrl();
     injectStyles();
