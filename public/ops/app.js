@@ -165,128 +165,211 @@ function loadMESHData(){
   });
 }
 
-// Build storm tracks — each track follows one storm's path
-// Storms move roughly SW to NE. Link reports that are:
-// 1. Close in time (within ~2 hours)
-// 2. Along the same general direction of travel
-// 3. Within reasonable distance for storm motion (~50km between consecutive reports)
+// Build storm tracks using NWS warning motion vectors + SPC report timing
+// Supercells move SW→NE. We follow that bearing and only link reports
+// that are downwind of each other in time order.
 function buildTracks(reports){
-  var pts=reports.slice().sort(function(a,b){return(a.time||'').localeCompare(b.time||'')});
+  if(!reports.length) return [];
+
+  var pts=reports.slice().sort(function(a,b){
+    // Sort by time primarily
+    var ta=(a.time||'0000');var tb=(b.time||'0000');
+    if(ta!==tb) return ta.localeCompare(tb);
+    // Same time — sort by latitude (south to north, storm motion)
+    return a.lat-b.lat;
+  });
+
   var used=[];for(var i=0;i<pts.length;i++)used[i]=false;
   var tracks=[];
+
+  // Typical storm motion: SW to NE (~40-60° bearing)
+  // Storms move at roughly 30-50 mph = 50-80 km/hr
+  var typicalBearing=45; // degrees (NE)
+  var bearingTolerance=60; // allow 60° deviation from typical
+  var maxDistKm=80; // max distance between consecutive reports
+  var maxTimeDiffMin=120; // max 2 hours between consecutive reports
 
   for(var i=0;i<pts.length;i++){
     if(used[i])continue;
     var track=[pts[i]];used[i]=true;
+    var lastIdx=i;
 
-    // Walk forward in time, find the next report along this storm's path
-    var lastPt=pts[i];
+    // Walk forward in time looking for the next report along this storm's path
     for(var j=i+1;j<pts.length;j++){
       if(used[j])continue;
-      var d=distKm(lastPt.lat,lastPt.lon,pts[j].lat,pts[j].lon);
-      // Must be within 50km of the last point in the track
-      if(d>50)continue;
-      // Check bearing — storms generally move SW to NE (180-360 range ok)
-      // But don't be too strict — storms can wobble
-      if(track.length>=2){
-        var prevBearing=bear(track[track.length-2].lat,track[track.length-2].lon,lastPt.lat,lastPt.lon);
-        var newBearing=bear(lastPt.lat,lastPt.lon,pts[j].lat,pts[j].lon);
-        var bearingDiff=Math.abs(newBearing-prevBearing);
-        if(bearingDiff>180)bearingDiff=360-bearingDiff;
-        // Allow up to 90° deviation
-        if(bearingDiff>90)continue;
-      }
-      track.push(pts[j]);used[j]=true;lastPt=pts[j];
+
+      var last=pts[lastIdx];
+      var candidate=pts[j];
+
+      // Check distance
+      var d=distKm(last.lat,last.lon,candidate.lat,candidate.lon);
+      if(d>maxDistKm||d<1) continue; // too far or same spot
+
+      // Check bearing — must be roughly NE of previous point
+      var b=bear(last.lat,last.lon,candidate.lat,candidate.lon);
+      var bDiff=Math.abs(b-typicalBearing);
+      if(bDiff>180)bDiff=360-bDiff;
+      if(bDiff>bearingTolerance) continue; // wrong direction
+
+      // Check time difference
+      var t1=parseInt(last.time||'0');var t2=parseInt(candidate.time||'0');
+      var timeDiff=Math.abs(t2-t1);
+      // Handle day wraparound
+      if(timeDiff>1200) timeDiff=2400-timeDiff;
+      // Convert HHMM diff to minutes roughly
+      var minDiff=Math.floor(timeDiff/100)*60+(timeDiff%100);
+      if(minDiff>maxTimeDiffMin) continue;
+
+      // This report fits the storm track
+      track.push(candidate);
+      used[j]=true;
+      lastIdx=j;
     }
+
     tracks.push(track);
   }
-  return tracks;
+
+  // Merge very short tracks that are near each other and same direction
+  // (sometimes one storm produces scattered single reports)
+  var merged=[];
+  var mergedUsed=[];for(var i=0;i<tracks.length;i++)mergedUsed[i]=false;
+
+  for(var i=0;i<tracks.length;i++){
+    if(mergedUsed[i])continue;
+    var t=tracks[i].slice();
+    mergedUsed[i]=true;
+
+    if(t.length<=2){
+      // Try to attach to a nearby longer track
+      for(var j=0;j<tracks.length;j++){
+        if(mergedUsed[j]||j===i)continue;
+        var lastOfJ=tracks[j][tracks[j].length-1];
+        var firstOfT=t[0];
+        var d=distKm(lastOfJ.lat,lastOfJ.lon,firstOfT.lat,firstOfT.lon);
+        if(d<40){
+          var b2=bear(lastOfJ.lat,lastOfJ.lon,firstOfT.lat,firstOfT.lon);
+          var bDiff2=Math.abs(b2-typicalBearing);
+          if(bDiff2>180)bDiff2=360-bDiff2;
+          if(bDiff2<bearingTolerance){
+            tracks[j]=tracks[j].concat(t);
+            mergedUsed[i]=true;
+            break;
+          }
+        }
+      }
+    }
+    if(!mergedUsed[i]||t.length>2) merged.push(t);
+  }
+
+  return merged.length?merged:tracks.filter(function(t){return t.length>0});
 }
 
-// Paint one storm swath — a smooth transparent corridor
+// Paint one storm swath — smooth transparent corridor along storm path
 function paintSwath(track){
   if(!track.length)return;
   var maxSize=0;
   track.forEach(function(r){if(r.size>maxSize)maxSize=r.size});
 
-  // Swath half-width in km based on max hail size
-  var halfW=maxSize>=2.75?10:maxSize>=1.75?7:maxSize>=1?5:3;
-
   if(track.length===1){
-    // Single point — transparent oval showing estimated hail coverage
+    // Single report — elongated ellipse along typical storm motion (SW→NE)
     var r=track[0];
-    // Hail from a supercell typically falls in an elongated area
-    // Stretch it along the typical storm motion (SW to NE, ~230° bearing)
-    var stormBearing=230; // typical supercell motion
-    var len=halfW*1.5; // elongate along storm path
+    var w=r.size>=2.75?8:r.size>=1.75?6:r.size>=1?4:3;
     var pts=[];
-    // Build an elongated ellipse shape
-    for(var a=0;a<360;a+=15){
+    for(var a=0;a<360;a+=12){
       var rad=a*Math.PI/180;
-      var stretch=(Math.abs(Math.cos(rad-stormBearing*Math.PI/180))*0.6+0.4);
-      var dist=halfW*stretch;
-      pts.push(offset(r.lat,r.lon,a,dist));
+      // Elongate along 45° (NE) bearing — storms stretch this way
+      var stretch=1+Math.abs(Math.cos(rad-45*Math.PI/180))*0.8;
+      pts.push(offset(r.lat,r.lon,a,w*stretch));
     }
-    var swathColor=r.size>=2.75?'#d32f2f':r.size>=1.75?'#e65100':'#f57f17';
-    var shape=L.polygon(pts,{
-      fillColor:swathColor,fillOpacity:0.2,
-      color:swathColor,weight:1,opacity:0.3,smoothFactor:3
-    });
-    shape.addTo(map);meshSwathLayers.push(shape);
+    var col=r.size>=2.75?'#c62828':r.size>=1.75?'#d84315':'#ef6c00';
+    var poly=L.polygon(pts,{fillColor:col,fillOpacity:0.18,color:col,weight:1,opacity:0.25,smoothFactor:3});
+    poly.addTo(map);meshSwathLayers.push(poly);
     return;
   }
 
-  // Build left and right edges of the swath corridor
-  var leftEdge=[];
-  var rightEdge=[];
-
+  // Multi-point track — build a smooth corridor
+  // Step 1: Compute smoothed bearings at each point
+  var bearings=[];
   for(var i=0;i<track.length;i++){
-    var bearing;
-    if(i<track.length-1){
-      bearing=bear(track[i].lat,track[i].lon,track[i+1].lat,track[i+1].lon);
-    }else{
-      bearing=bear(track[i-1].lat,track[i-1].lon,track[i].lat,track[i].lon);
+    if(track.length===1){bearings.push(45);continue}
+    if(i===0) bearings.push(bear(track[0].lat,track[0].lon,track[1].lat,track[1].lon));
+    else if(i===track.length-1) bearings.push(bear(track[i-1].lat,track[i-1].lon,track[i].lat,track[i].lon));
+    else{
+      // Average bearing from prev and to next for smoother turns
+      var b1=bear(track[i-1].lat,track[i-1].lon,track[i].lat,track[i].lon);
+      var b2=bear(track[i].lat,track[i].lon,track[i+1].lat,track[i+1].lon);
+      // Average angles properly
+      var x=Math.cos(b1*Math.PI/180)+Math.cos(b2*Math.PI/180);
+      var y=Math.sin(b1*Math.PI/180)+Math.sin(b2*Math.PI/180);
+      bearings.push((Math.atan2(y,x)*180/Math.PI+360)%360);
     }
-
-    // Width varies with this point's hail size
-    var w=track[i].size>=2.75?10:track[i].size>=1.75?7:track[i].size>=1?5:3;
-
-    var left=offset(track[i].lat,track[i].lon,(bearing+270)%360,w);
-    var right=offset(track[i].lat,track[i].lon,(bearing+90)%360,w);
-    leftEdge.push(left);
-    rightEdge.push(right);
   }
 
-  // Build the swath polygon: left edge forward, right edge backward
-  var swathCoords=leftEdge.concat(rightEdge.reverse());
+  // Step 2: Build left and right edges
+  var leftEdge=[];var rightEdge=[];
+  for(var i=0;i<track.length;i++){
+    // Width based on hail size at this point
+    var w=track[i].size>=2.75?10:track[i].size>=1.75?7:track[i].size>=1?5:3.5;
+    var perpLeft=(bearings[i]+270)%360;
+    var perpRight=(bearings[i]+90)%360;
+    leftEdge.push(offset(track[i].lat,track[i].lon,perpLeft,w));
+    rightEdge.push(offset(track[i].lat,track[i].lon,perpRight,w));
+  }
 
-  // Draw the swath — transparent orange/red
-  var swathColor=maxSize>=2.75?'#d32f2f':maxSize>=1.75?'#e65100':'#f57f17';
-  var swath=L.polygon(swathCoords,{
-    fillColor:swathColor,fillOpacity:0.22,
-    color:swathColor,weight:1.5,opacity:0.35,
-    smoothFactor:2
-  });
-  swath.addTo(map);meshSwathLayers.push(swath);
+  // Step 3: Add rounded end caps
+  var startBearing=bearings[0];
+  var endBearing=bearings[bearings.length-1];
+  var startW=track[0].size>=2.75?10:track[0].size>=1.75?7:track[0].size>=1?5:3.5;
+  var endW=track[track.length-1].size>=2.75?10:track[track.length-1].size>=1.75?7:track[track.length-1].size>=1?5:3.5;
 
-  // If severe, add a narrower inner core
-  if(maxSize>=1.75){
-    var innerLeft=[];var innerRight=[];
+  // Start cap (semicircle behind the first point)
+  var startCap=[];
+  for(var a=0;a<=180;a+=20){
+    var angle=(startBearing+180+90+a)%360;
+    startCap.push(offset(track[0].lat,track[0].lon,angle,startW));
+  }
+
+  // End cap (semicircle ahead of the last point)
+  var endCap=[];
+  var lastPt=track[track.length-1];
+  for(var a=0;a<=180;a+=20){
+    var angle=(endBearing+270+a)%360;
+    endCap.push(offset(lastPt.lat,lastPt.lon,angle,endW));
+  }
+
+  // Step 4: Assemble the full swath polygon
+  // Left edge → end cap → right edge reversed → start cap
+  var swathCoords=leftEdge.concat(endCap).concat(rightEdge.reverse()).concat(startCap);
+
+  // Outer swath — wider, lighter
+  var outerLeft=[];var outerRight=[];
+  for(var i=0;i<track.length;i++){
+    var ow=(track[i].size>=2.75?14:track[i].size>=1.75?10:track[i].size>=1?7:5);
+    outerLeft.push(offset(track[i].lat,track[i].lon,(bearings[i]+270)%360,ow));
+    outerRight.push(offset(track[i].lat,track[i].lon,(bearings[i]+90)%360,ow));
+  }
+  var outerCoords=outerLeft.concat(outerRight.reverse());
+  var outerColor=maxSize>=2.75?'#ff8a65':maxSize>=1.75?'#ffb74d':'#fff176';
+  var outerSwath=L.polygon(outerCoords,{fillColor:outerColor,fillOpacity:0.12,color:outerColor,weight:0,smoothFactor:3});
+  outerSwath.addTo(map);meshSwathLayers.push(outerSwath);
+
+  // Main swath
+  var mainColor=maxSize>=2.75?'#d32f2f':maxSize>=1.75?'#e65100':'#ef6c00';
+  var mainSwath=L.polygon(swathCoords,{fillColor:mainColor,fillOpacity:0.2,color:mainColor,weight:1,opacity:0.3,smoothFactor:3});
+  mainSwath.addTo(map);meshSwathLayers.push(mainSwath);
+
+  // Inner core — narrower, darker (severe hail center)
+  if(maxSize>=1.5){
+    var coreLeft=[];var coreRight=[];
     for(var i=0;i<track.length;i++){
-      var bearing;
-      if(i<track.length-1) bearing=bear(track[i].lat,track[i].lon,track[i+1].lat,track[i+1].lon);
-      else bearing=bear(track[i-1].lat,track[i-1].lon,track[i].lat,track[i].lon);
-      var w2=track[i].size>=2.75?4:track[i].size>=1.75?3:2;
-      innerLeft.push(offset(track[i].lat,track[i].lon,(bearing+270)%360,w2));
-      innerRight.push(offset(track[i].lat,track[i].lon,(bearing+90)%360,w2));
+      var cw=track[i].size>=2.75?4:track[i].size>=1.75?3:2;
+      coreLeft.push(offset(track[i].lat,track[i].lon,(bearings[i]+270)%360,cw));
+      coreRight.push(offset(track[i].lat,track[i].lon,(bearings[i]+90)%360,cw));
     }
-    var innerCoords=innerLeft.concat(innerRight.reverse());
+    var coreCoords=coreLeft.concat(coreRight.reverse());
     var coreColor=maxSize>=2.75?'#b71c1c':'#bf360c';
-    var core=L.polygon(innerCoords,{
-      fillColor:coreColor,fillOpacity:0.25,
-      color:coreColor,weight:0,smoothFactor:2
-    });
-    core.addTo(map);meshSwathLayers.push(core);
+    var coreSwath=L.polygon(coreCoords,{fillColor:coreColor,fillOpacity:0.28,color:coreColor,weight:0,smoothFactor:3});
+    coreSwath.addTo(map);meshSwathLayers.push(coreSwath);
   }
 }
 
