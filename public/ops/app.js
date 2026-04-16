@@ -922,11 +922,32 @@ window.viewThread=function(threadId){
 
 // ─── Helpers ──────────────────────────────────────────
 function filterReports(){
-  var q=document.getElementById('searchInput').value.toLowerCase();
-  if(!q){renderReports(allReports);renderMap(allReports);return}
-  var filtered=allReports.filter(function(r){return(r.location+r.county+r.state+r.comments).toLowerCase().indexOf(q)!==-1});
+  var q=document.getElementById('searchInput').value.toLowerCase().trim();
+  if(!q){
+    renderReports(allReports);
+    renderMap(allReports);
+    renderScout(scoutZones,null);
+    renderAlerts(allAlerts);
+    return;
+  }
+  // Filter reports
+  var filtered=allReports.filter(function(r){
+    return(r.location+' '+r.county+' '+r.state+' '+(r.comments||'')).toLowerCase().indexOf(q)!==-1;
+  });
   renderReports(filtered);
   renderMap(filtered);
+
+  // Filter scout zones
+  var filteredZones=scoutZones.filter(function(z){
+    return(z.county+' '+z.state+' '+(z.locations||[]).join(' ')).toLowerCase().indexOf(q)!==-1;
+  });
+  renderScout(filteredZones,null);
+
+  // Filter alerts
+  var filteredAlerts=allAlerts.filter(function(a){
+    return((a.event||'')+' '+(a.areas||'')+' '+(a.description||'')).toLowerCase().indexOf(q)!==-1;
+  });
+  renderAlerts(filteredAlerts);
 }
 window.flyTo=function(lat,lon){
   document.querySelector('[data-tab="map"]').click();
