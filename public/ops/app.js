@@ -264,113 +264,68 @@ function buildTracks(reports){
   return merged.length?merged:tracks.filter(function(t){return t.length>0});
 }
 
-// Paint one storm swath — smooth transparent corridor along storm path
+// Paint one storm swath — smooth elongated ellipses like RadarScope
 function paintSwath(track){
   if(!track.length)return;
-  var maxSize=0;
-  track.forEach(function(r){if(r.size>maxSize)maxSize=r.size});
 
-  if(track.length===1){
-    // Single report — elongated ellipse along typical storm motion (SW→NE)
-    var r=track[0];
-    var w=r.size>=2.75?8:r.size>=1.75?6:r.size>=1?4:3;
-    var pts=[];
-    for(var a=0;a<360;a+=12){
-      var rad=a*Math.PI/180;
-      // Elongate along 45° (NE) bearing — storms stretch this way
-      var stretch=1+Math.abs(Math.cos(rad-45*Math.PI/180))*0.8;
-      pts.push(offset(r.lat,r.lon,a,w*stretch));
-    }
-    var col=r.size>=2.75?'#c62828':r.size>=1.75?'#d84315':'#ef6c00';
-    var poly=L.polygon(pts,{fillColor:col,fillOpacity:0.18,color:col,weight:1,opacity:0.25,smoothFactor:3});
-    poly.addTo(map);meshSwathLayers.push(poly);
-    return;
-  }
-
-  // Multi-point track — build a smooth corridor
-  // Step 1: Compute smoothed bearings at each point
-  var bearings=[];
+  // For each report point, draw overlapping elongated ellipses
+  // They blend together into a smooth flowing swath along the storm path
   for(var i=0;i<track.length;i++){
-    if(track.length===1){bearings.push(45);continue}
-    if(i===0) bearings.push(bear(track[0].lat,track[0].lon,track[1].lat,track[1].lon));
-    else if(i===track.length-1) bearings.push(bear(track[i-1].lat,track[i-1].lon,track[i].lat,track[i].lon));
-    else{
-      // Average bearing from prev and to next for smoother turns
-      var b1=bear(track[i-1].lat,track[i-1].lon,track[i].lat,track[i].lon);
-      var b2=bear(track[i].lat,track[i].lon,track[i+1].lat,track[i+1].lon);
-      // Average angles properly
-      var x=Math.cos(b1*Math.PI/180)+Math.cos(b2*Math.PI/180);
-      var y=Math.sin(b1*Math.PI/180)+Math.sin(b2*Math.PI/180);
-      bearings.push((Math.atan2(y,x)*180/Math.PI+360)%360);
+    var r=track[i];
+
+    // Determine storm bearing at this point
+    var stormBearing=45; // default NE
+    if(track.length>1){
+      if(i<track.length-1) stormBearing=bear(r.lat,r.lon,track[i+1].lat,track[i+1].lon);
+      else stormBearing=bear(track[i-1].lat,track[i-1].lon,r.lat,r.lon);
     }
+
+    // Ellipse size based on hail magnitude
+    var majorKm=r.size>=2.75?14:r.size>=1.75?10:r.size>=1?7:5; // along storm
+    var minorKm=r.size>=2.75?6:r.size>=1.75?4.5:r.size>=1?3:2.5; // perpendicular
+
+    // Draw 3 concentric ellipses for gradient effect
+    var layers=[
+      {majMult:1.6,minMult:1.6,color:'#fff176',opacity:0.08}, // outer yellow
+      {majMult:1.0,minMult:1.0,color:r.size>=2?'#ff7043':'#ffa726',opacity:0.14}, // mid orange
+      {majMult:0.5,minMult:0.5,color:r.size>=2.5?'#e53935':'#f4511e',opacity:0.22} // inner red
+    ];
+
+    layers.forEach(function(layer){
+      var pts=buildEllipse(
+        r.lat,r.lon,
+        majorKm*layer.majMult,
+        minorKm*layer.minMult,
+        stormBearing
+      );
+      var poly=L.polygon(pts,{
+        fillColor:layer.color,fillOpacity:layer.opacity,
+        color:layer.color,weight:0,smoothFactor:3
+      });
+      poly.addTo(map);meshSwathLayers.push(poly);
+    });
   }
+}
 
-  // Step 2: Build left and right edges
-  var leftEdge=[];var rightEdge=[];
-  for(var i=0;i<track.length;i++){
-    // Width based on hail size at this point
-    var w=track[i].size>=2.75?10:track[i].size>=1.75?7:track[i].size>=1?5:3.5;
-    var perpLeft=(bearings[i]+270)%360;
-    var perpRight=(bearings[i]+90)%360;
-    leftEdge.push(offset(track[i].lat,track[i].lon,perpLeft,w));
-    rightEdge.push(offset(track[i].lat,track[i].lon,perpRight,w));
+// Build an ellipse rotated along a bearing
+function buildEllipse(lat,lon,majorKm,minorKm,bearingDeg){
+  var pts=[];
+  var steps=36; // smooth circle
+  for(var i=0;i<steps;i++){
+    var angle=(i/steps)*2*Math.PI;
+    // Ellipse in local coords
+    var dx=majorKm*Math.cos(angle);
+    var dy=minorKm*Math.sin(angle);
+    // Rotate by storm bearing
+    var bRad=bearingDeg*Math.PI/180;
+    var rx=dx*Math.cos(bRad)-dy*Math.sin(bRad);
+    var ry=dx*Math.sin(bRad)+dy*Math.cos(bRad);
+    // Convert km offset to lat/lon
+    var newLat=lat+ry/111.32;
+    var newLon=lon+rx/(111.32*Math.cos(lat*Math.PI/180));
+    pts.push([newLat,newLon]);
   }
-
-  // Step 3: Add rounded end caps
-  var startBearing=bearings[0];
-  var endBearing=bearings[bearings.length-1];
-  var startW=track[0].size>=2.75?10:track[0].size>=1.75?7:track[0].size>=1?5:3.5;
-  var endW=track[track.length-1].size>=2.75?10:track[track.length-1].size>=1.75?7:track[track.length-1].size>=1?5:3.5;
-
-  // Start cap (semicircle behind the first point)
-  var startCap=[];
-  for(var a=0;a<=180;a+=20){
-    var angle=(startBearing+180+90+a)%360;
-    startCap.push(offset(track[0].lat,track[0].lon,angle,startW));
-  }
-
-  // End cap (semicircle ahead of the last point)
-  var endCap=[];
-  var lastPt=track[track.length-1];
-  for(var a=0;a<=180;a+=20){
-    var angle=(endBearing+270+a)%360;
-    endCap.push(offset(lastPt.lat,lastPt.lon,angle,endW));
-  }
-
-  // Step 4: Assemble the full swath polygon
-  // Left edge → end cap → right edge reversed → start cap
-  var swathCoords=leftEdge.concat(endCap).concat(rightEdge.reverse()).concat(startCap);
-
-  // Outer swath — wider, lighter
-  var outerLeft=[];var outerRight=[];
-  for(var i=0;i<track.length;i++){
-    var ow=(track[i].size>=2.75?14:track[i].size>=1.75?10:track[i].size>=1?7:5);
-    outerLeft.push(offset(track[i].lat,track[i].lon,(bearings[i]+270)%360,ow));
-    outerRight.push(offset(track[i].lat,track[i].lon,(bearings[i]+90)%360,ow));
-  }
-  var outerCoords=outerLeft.concat(outerRight.reverse());
-  var outerColor=maxSize>=2.75?'#ff8a65':maxSize>=1.75?'#ffb74d':'#fff176';
-  var outerSwath=L.polygon(outerCoords,{fillColor:outerColor,fillOpacity:0.12,color:outerColor,weight:0,smoothFactor:3});
-  outerSwath.addTo(map);meshSwathLayers.push(outerSwath);
-
-  // Main swath
-  var mainColor=maxSize>=2.75?'#d32f2f':maxSize>=1.75?'#e65100':'#ef6c00';
-  var mainSwath=L.polygon(swathCoords,{fillColor:mainColor,fillOpacity:0.2,color:mainColor,weight:1,opacity:0.3,smoothFactor:3});
-  mainSwath.addTo(map);meshSwathLayers.push(mainSwath);
-
-  // Inner core — narrower, darker (severe hail center)
-  if(maxSize>=1.5){
-    var coreLeft=[];var coreRight=[];
-    for(var i=0;i<track.length;i++){
-      var cw=track[i].size>=2.75?4:track[i].size>=1.75?3:2;
-      coreLeft.push(offset(track[i].lat,track[i].lon,(bearings[i]+270)%360,cw));
-      coreRight.push(offset(track[i].lat,track[i].lon,(bearings[i]+90)%360,cw));
-    }
-    var coreCoords=coreLeft.concat(coreRight.reverse());
-    var coreColor=maxSize>=2.75?'#b71c1c':'#bf360c';
-    var coreSwath=L.polygon(coreCoords,{fillColor:coreColor,fillOpacity:0.28,color:coreColor,weight:0,smoothFactor:3});
-    coreSwath.addTo(map);meshSwathLayers.push(coreSwath);
-  }
+  return pts;
 }
 
 // ─── Geo helpers ──────────────────────────────────────
