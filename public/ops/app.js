@@ -110,22 +110,59 @@ window.toggleLayer=function(id){
 };
 
 // ─── HailStrike Swath Engine v3 ───────────────────────
-// Simple: transparent painted area showing where hail fell
 function loadMESHData(){
   meshSwathLayers.forEach(function(l){map.removeLayer(l)});
   meshSwathLayers=[];
-  if(!allReports.length){
-    document.getElementById('statusText').textContent='No reports to build swaths';
-    return;
-  }
 
-  // Hide the regular dot markers when swath is on
+  // Hide dot markers
   markers.forEach(function(m){map.removeLayer(m)});
+  document.getElementById('statusText').textContent='Building swaths...';
 
-  // Group reports into storm tracks
-  var tracks=buildTracks(allReports);
-  tracks.forEach(function(t){paintSwath(t)});
-  document.getElementById('statusText').textContent=tracks.length+' hail swath'+(tracks.length!==1?'s':'')+' from '+allReports.length+' reports';
+  // Try to get NHI radar hail data first, merge with SPC reports
+  var stations=['KEAX','KLSX','KSGF'];
+  var fetches=stations.map(function(st){
+    return fetch('/api/nexrad?action=hail&station='+st).then(function(r){return r.json()}).catch(function(){return{hailCells:[]}});
+  });
+
+  Promise.all(fetches).then(function(results){
+    // Merge NHI cells with SPC reports for best coverage
+    var allPoints=allReports.slice();
+
+    results.forEach(function(data){
+      (data.hailCells||[]).forEach(function(cell){
+        if(cell.lat&&cell.lon&&cell.mehs&&cell.mehs>0){
+          allPoints.push({
+            lat:cell.lat,lon:cell.lon,
+            size:cell.mehs,
+            sizeLabel:cell.mehs>=2.75?'Baseball':cell.mehs>=1.75?'Golf Ball':cell.mehs>=1?'Quarter':'Small',
+            location:'Radar Detection',county:'',state:'',
+            time:cell.scanKey?cell.scanKey.split('_').slice(-3,-1).join(''):'',
+            source:'NHI',poh:cell.poh,posh:cell.posh
+          });
+        }
+      });
+    });
+
+    if(!allPoints.length){
+      document.getElementById('statusText').textContent='No hail data available';
+      markers.forEach(function(m){m.addTo(map)});
+      return;
+    }
+
+    // Build tracks and paint swaths
+    var tracks=buildTracks(allPoints);
+    tracks.forEach(function(t){paintSwath(t)});
+    document.getElementById('statusText').textContent=tracks.length+' storm swath'+(tracks.length!==1?'s':'')+' from '+allPoints.length+' data points (SPC + radar)';
+  }).catch(function(){
+    // Fallback to SPC only
+    if(!allReports.length){
+      document.getElementById('statusText').textContent='No data';
+      return;
+    }
+    var tracks=buildTracks(allReports);
+    tracks.forEach(function(t){paintSwath(t)});
+    document.getElementById('statusText').textContent=tracks.length+' swaths from SPC reports';
+  });
 }
 
 // Build storm tracks — each track follows one storm's path
