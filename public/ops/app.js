@@ -1054,29 +1054,15 @@ window.findBusinesses=function(lat,lon){
       dealerEl.innerHTML='<div class="data-card"><div class="card-title" style="color:var(--muted)">No dealerships found within 15 miles</div></div>';
     } else {
       dealerEl.innerHTML=dealers.map(function(b){
-        var mapsUrl='https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(b.name+' '+b.city+' '+b.state);
-        var fbSearch='https://www.facebook.com/search/pages/?q='+encodeURIComponent(b.name+' '+b.city);
+        var fbSearch='https://www.facebook.com/search/pages/?q='+encodeURIComponent(b.name+' '+(b.city||''));
         return '<div class="data-card" style="border-left:3px solid var(--red)">'+
           '<div class="card-head"><span class="card-title">'+b.name+'</span><span class="card-badge badge-red">'+b.distance+'</span></div>'+
-          '<div class="card-meta" style="flex-direction:column;gap:4px;margin-top:6px">'+
-            (b.address?'<span>'+b.address+(b.city?', '+b.city:'')+(b.state?' '+b.state:'')+(b.zip?' '+b.zip:'')+'</span>':'')+
-            (b.phone?'<span>Phone: <b>'+b.phone+'</b></span>':'')+
-            (b.email?'<span>Email: <a href="mailto:'+b.email+'">'+b.email+'</a></span>':'')+
-            (b.website?'<span>Web: <a href="'+b.website+'" target="_blank">'+b.website.substring(0,40)+'</a></span>':'')+
-            (b.brand?'<span>Brand: <b>'+b.brand+'</b></span>':'')+
-            (b.openingHours?'<span>Hours: '+b.openingHours+'</span>':'')+
-          '</div>'+
-          (b.facebook||b.instagram||b.twitter?'<div class="card-meta" style="margin-top:4px">'+
-            (b.facebook?'<a href="'+b.facebook+'" target="_blank" style="color:var(--cyan)">Facebook</a>':'')+
-            (b.instagram?'<a href="https://instagram.com/'+b.instagram+'" target="_blank" style="color:var(--cyan)">Instagram</a>':'')+
-            (b.twitter?'<a href="https://twitter.com/'+b.twitter+'" target="_blank" style="color:var(--cyan)">X/Twitter</a>':'')+
-          '</div>':'')+
+          '<div class="card-meta"><span>'+(b.city||'')+' '+(b.state||'')+'</span>'+(b.phone?'<span><b>'+b.phone+'</b></span>':'')+(b.brand?'<span>'+b.brand+'</span>':'')+'</div>'+
           '<div class="card-actions">'+
-            (b.phone?'<a class="card-btn red" href="tel:'+b.phone+'">Call Now</a><a class="card-btn" href="sms:'+b.phone+'">Text</a>':'')+
-            '<a class="card-btn" href="'+fbSearch+'" target="_blank">Find on FB</a>'+
-            '<a class="card-btn" href="'+mapsUrl+'" target="_blank">Directions</a>'+
+            (b.phone?'<a class="card-btn red" href="tel:'+b.phone+'">Call</a><a class="card-btn" href="sms:'+b.phone+'">Text</a>':'')+
+            '<a class="card-btn" href="'+fbSearch+'" target="_blank">FB</a>'+
+            (b.website?'<a class="card-btn" href="'+b.website+'" target="_blank">Web</a>':'')+
             '<button class="card-btn" onclick="addDealerFromBiz(\''+b.name.replace(/'/g,'')+'\',\''+(b.phone||'')+'\',\''+(b.city||'')+'\',\''+(b.state||'')+'\')">+ Lead</button>'+
-            '<button class="card-btn" onclick="flyTo('+b.lat+','+b.lon+')">Map</button>'+
           '</div></div>';
       }).join('');
     }
@@ -1088,22 +1074,12 @@ window.findBusinesses=function(lat,lon){
       bodyEl.innerHTML='<div class="data-card"><div class="card-title" style="color:var(--muted)">No body shops found</div></div>';
     } else {
       bodyEl.innerHTML=bodies.map(function(b){
-        var fbSearch='https://www.facebook.com/search/pages/?q='+encodeURIComponent(b.name+' '+(b.city||''));
         return '<div class="data-card" style="border-left:3px solid var(--amber)">'+
           '<div class="card-head"><span class="card-title">'+b.name+'</span><span class="card-badge badge-amber">'+b.distance+'</span></div>'+
-          '<div class="card-meta" style="flex-direction:column;gap:4px;margin-top:6px">'+
-            (b.address?'<span>'+b.address+(b.city?', '+b.city:'')+(b.state?' '+b.state:'')+'</span>':'')+
-            (b.phone?'<span>Phone: <b>'+b.phone+'</b></span>':'')+
-            (b.website?'<span><a href="'+b.website+'" target="_blank">Website</a></span>':'')+
-            (b.openingHours?'<span>Hours: '+b.openingHours+'</span>':'')+
-          '</div>'+
-          (b.facebook||b.instagram?'<div class="card-meta" style="margin-top:4px">'+
-            (b.facebook?'<a href="'+b.facebook+'" target="_blank" style="color:var(--cyan)">Facebook</a>':'')+
-            (b.instagram?'<a href="https://instagram.com/'+b.instagram+'" target="_blank" style="color:var(--cyan)">Instagram</a>':'')+
-          '</div>':'')+
+          '<div class="card-meta"><span>'+(b.city||'')+'</span>'+(b.phone?'<span>'+b.phone+'</span>':'')+'</div>'+
           '<div class="card-actions">'+
-            (b.phone?'<a class="card-btn" href="tel:'+b.phone+'">Call</a><a class="card-btn" href="sms:'+b.phone+'">Text</a>':'')+
-            '<a class="card-btn" href="'+fbSearch+'" target="_blank">Find on FB</a>'+
+            (b.phone?'<a class="card-btn" href="tel:'+b.phone+'">Call</a>':'')+
+            (b.website?'<a class="card-btn" href="'+b.website+'" target="_blank">Web</a>':'')+
             '<button class="card-btn" onclick="flyTo('+b.lat+','+b.lon+')">Map</button>'+
           '</div></div>';
       }).join('');
