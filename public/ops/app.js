@@ -110,87 +110,84 @@ window.toggleLayer=function(id){
   if(btn) btn.classList.toggle('active',layerState[id]);
 };
 
-// ─── HailStrike Swath Engine ──────────────────────────
-// Pulls REAL NEXRAD MESH contour vectors from NMD product files
-// Same data RadarScope displays — decoded from binary Level III
+// ─── Hail Zones ──────────────────────────────────────
+// Shows NWS warning polygons (accurate storm shapes) + SPC report areas
+// MESH contour decoding needs more work — coming in future update
 function loadMESHData(){
   meshSwathLayers.forEach(function(l){map.removeLayer(l)});
   meshSwathLayers=[];
   markers.forEach(function(m){map.removeLayer(m)});
-  document.getElementById('statusText').textContent='Loading NEXRAD MESH contours...';
+  document.getElementById('statusText').textContent='Loading hail zones...';
 
-  // Fetch real MESH contours from our parser
-  fetch('/api/mesh?stations=EAX,LSX,SGF,ICT,TOP,OAX,DVN,DMX,ILX,PAH,TSA,INX&hours=6')
+  // 1. Get NWS severe thunderstorm warning polygons (real storm shapes)
+  fetch('https://api.weather.gov/alerts/active?status=actual&message_type=alert',{
+    headers:{'User-Agent':'HailStrikeOps/1.0','Accept':'application/geo+json'}
+  })
   .then(function(r){return r.json()})
   .then(function(data){
-    var contours=data.contours||[];
-    var cells=data.cells||[];
+    var features=data.features||[];
+    var count=0;
 
-    if(contours.length===0&&cells.length===0){
-      // No MESH data — fall back to SPC report swaths
-      if(allReports.length>0){
-        var tracks=buildTracks(allReports);
-        tracks.forEach(function(t){paintSwath(t)});
-        document.getElementById('statusText').textContent=tracks.length+' swaths from SPC reports (no MESH contours available)';
-      } else {
-        document.getElementById('statusText').textContent='No MESH data or SPC reports available';
-        markers.forEach(function(m){m.addTo(map)});
-      }
-      return;
-    }
+    features.forEach(function(f){
+      if(!f.geometry||!f.geometry.coordinates) return;
+      var desc=((f.properties.description||'')+' '+(f.properties.event||'')).toLowerCase();
+      if(desc.indexOf('hail')===-1&&desc.indexOf('severe thunderstorm')===-1) return;
 
-    // Draw NEXRAD MESH contour lines — just like RadarScope
-    // Color by MESH value (color level from the product)
-    var colors={
-      1:'#fff176', 2:'#ffee58', 3:'#fdd835', 4:'#fbc02d',
-      5:'#f9a825', 6:'#f57f17', 7:'#ff8f00', 8:'#ff6f00',
-      9:'#e65100', 10:'#bf360c', 11:'#d50000', 12:'#b71c1c',
-      13:'#880e4f', 14:'#4a148c', 15:'#311b92'
-    };
+      var isTornado=(f.properties.event||'').toLowerCase().indexOf('tornado')!==-1;
+      var hailMatch=(f.properties.description||'').match(/(\d+(?:\.\d+)?)\s*inch\s*hail/i);
+      var hailSize=hailMatch?parseFloat(hailMatch[1]):0;
 
-    contours.forEach(function(c){
-      if(c.vertices.length<2) return;
-      var color=colors[c.color]||'#fdd835';
-      var weight=c.color>=8?2.5:c.color>=5?2:1.5;
+      var color=isTornado?'#d50000':hailSize>=2?'#e65100':hailSize>=1?'#f9a825':'#fdd835';
 
-      // Draw as polyline (contour line) — not filled polygon
-      var line=L.polyline(c.vertices,{
-        color:color,weight:weight,opacity:0.85,smoothFactor:2
-      });
-      line.addTo(map);
-      meshSwathLayers.push(line);
+      try{
+        var coords=f.geometry.coordinates;
+        var polys=f.geometry.type==='Polygon'?[coords]:coords;
+        polys.forEach(function(pc){
+          var ll=pc[0].map(function(c){return[c[1],c[0]]});
+          var poly=L.polygon(ll,{
+            fillColor:color,fillOpacity:0.2,
+            color:color,weight:2,opacity:0.6,smoothFactor:2
+          });
+          poly.bindPopup(
+            '<b style="color:'+color+'">'+f.properties.event+'</b><br>'+
+            (hailSize?'<b>Hail: '+hailSize+'"</b><br>':'')+
+            '<span style="color:#999">'+f.properties.areaDesc+'</span>'
+          );
+          poly.addTo(map);meshSwathLayers.push(poly);count++;
+        });
+      }catch(e){}
     });
 
-    // Draw cell center markers with MESH values
-    cells.forEach(function(cell){
-      var color=cell.meshValue>=2.75?'#d50000':cell.meshValue>=1.75?'#e65100':'#f9a825';
-      var marker=L.circleMarker([cell.lat,cell.lon],{
-        radius:4,fillColor:color,fillOpacity:0.9,color:'#fff',weight:1.5
+    // 2. Show SPC reports as small transparent zones
+    allReports.forEach(function(r){
+      var col=r.size>=2.75?'#d50000':r.size>=1.75?'#e65100':r.size>=1?'#f9a825':'#fdd835';
+      var radius=r.size>=2.75?5000:r.size>=1.75?4000:r.size>=1?3000:2000;
+      var circle=L.circle([r.lat,r.lon],{
+        radius:radius,fillColor:col,fillOpacity:0.15,
+        color:col,weight:1,opacity:0.3
       });
-      marker.bindPopup(
-        '<b style="color:'+color+'">MESH: '+cell.meshValue+'"</b><br>'+
-        'Station: '+cell.station+'<br>'+
-        'Az: '+cell.azimuth+'° Range: '+cell.range+' nm<br>'+
-        '<span style="color:#888">Source: NEXRAD Level III</span><br><br>'+
-        '<button class="card-btn red" style="width:100%" onclick="findBusinesses('+cell.lat+','+cell.lon+')">Find Shops Here</button>'
+      circle.bindPopup(
+        '<b>'+r.location+', '+r.state+'</b><br>'+
+        '<b style="color:'+col+'">'+r.size+'" '+(r.sizeLabel||'')+'</b><br>'+
+        r.county+' Co.<br>'+
+        '<button class="card-btn red" style="width:100%;margin-top:6px" onclick="findBusinesses('+r.lat+','+r.lon+')">Find Shops</button>'
       );
-      marker.addTo(map);
-      meshSwathLayers.push(marker);
+      circle.addTo(map);meshSwathLayers.push(circle);
     });
 
-    document.getElementById('statusText').textContent=contours.length+' MESH contours + '+cells.length+' cells from NEXRAD radar';
+    document.getElementById('statusText').textContent=count+' warning zones + '+allReports.length+' hail reports';
   })
   .catch(function(e){
-    console.error('MESH load failed:',e);
-    // Fallback to SPC
-    if(allReports.length>0){
-      var tracks=buildTracks(allReports);
-      tracks.forEach(function(t){paintSwath(t)});
-      document.getElementById('statusText').textContent=tracks.length+' swaths from SPC reports';
-    } else {
-      markers.forEach(function(m){m.addTo(map)});
-      document.getElementById('statusText').textContent='MESH unavailable';
-    }
+    // Just show SPC reports
+    allReports.forEach(function(r){
+      var col=r.size>=2.75?'#d50000':r.size>=1.75?'#e65100':'#f9a825';
+      var circle=L.circle([r.lat,r.lon],{
+        radius:r.size*2000,fillColor:col,fillOpacity:0.15,
+        color:col,weight:1,opacity:0.3
+      });
+      circle.addTo(map);meshSwathLayers.push(circle);
+    });
+    document.getElementById('statusText').textContent=allReports.length+' hail report zones';
   });
 }
 
