@@ -137,3 +137,4 @@ a{color:var(--cyan);text-decoration:none}
   .card-list{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .stat-row{grid-template-columns:repeat(4,1fr);max-width:800px}
 }
+
