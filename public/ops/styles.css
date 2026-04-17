@@ -87,9 +87,11 @@ a{color:var(--cyan);text-decoration:none}
 
 /* LEAD TYPE TABS */
 .lead-type-tabs{display:flex;gap:0;margin-bottom:12px;border:1px solid var(--border);border-radius:4px;overflow:hidden}
-.type-tab{flex:1;background:var(--card);border:none;color:var(--muted);font-family:var(--font);font-size:12px;font-weight:700;padding:12px 8px;cursor:pointer;text-transform:uppercase;letter-spacing:.5px;transition:all .15s}
+.type-tab{flex:1;background:var(--card);border:none;color:var(--muted);font-family:var(--font);font-size:12px;font-weight:700;padding:12px 8px;cursor:pointer;text-transform:uppercase;letter-spacing:.5px;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:6px}
 .type-tab.active{background:var(--red);color:#fff}
 .type-tab:not(:last-child){border-right:1px solid var(--border)}
+.type-tab-count{display:inline-block;background:rgba(255,255,255,0.15);padding:2px 6px;border-radius:10px;font-size:10px;font-family:var(--mono);min-width:18px;text-align:center}
+.type-tab.active .type-tab-count{background:rgba(255,255,255,0.25);color:#fff}
 .lead-section{display:none}.lead-section.active{display:block}
 
 /* ACTION BTNS */

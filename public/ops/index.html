@@ -139,9 +139,9 @@
 
 <!-- Lead Type Selector -->
 <div class="lead-type-tabs">
-<button class="type-tab active" data-lt="storm" onclick="switchLeadType('storm')">Storm Leads</button>
-<button class="type-tab" data-lt="customer" onclick="switchLeadType('customer')">Customers</button>
-<button class="type-tab" data-lt="dealership" onclick="switchLeadType('dealership')">Dealerships</button>
+<button class="type-tab active" data-lt="storm" onclick="switchLeadType('storm')">Storm <span class="type-tab-count" id="countStorm">0</span></button>
+<button class="type-tab" data-lt="customer" onclick="switchLeadType('customer')">Customers <span class="type-tab-count" id="countCustomer">0</span></button>
+<button class="type-tab" data-lt="dealership" onclick="switchLeadType('dealership')">Dealers <span class="type-tab-count" id="countDealership">0</span></button>
 </div>
 
 <!-- STORM LEADS -->
@@ -155,7 +155,7 @@
 <button class="filter-chip" data-lf="estimate sent" data-for="storm">Estimate</button>
 <button class="filter-chip" data-lf="booked" data-for="storm">Booked</button>
 </div>
-<button class="action-btn" onclick="showAddLead('storm')">+ ADD STORM LEAD</button>
+<div style="display:flex;gap:8px;margin-bottom:12px"><button class="action-btn" style="margin-bottom:0" onclick="showAddLead('storm')">+ ADD STORM LEAD</button><button class="action-btn secondary" style="margin-bottom:0;flex:0 0 auto" onclick="exportLeads('storm')">Export</button></div>
 <div id="stormLeadsList" class="card-list"></div>
 </div>
 
@@ -172,7 +172,7 @@
 <button class="filter-chip" data-lf="completed" data-for="customer">Completed</button>
 <button class="filter-chip" data-lf="paid" data-for="customer">Paid</button>
 </div>
-<button class="action-btn" onclick="showAddLead('customer')">+ ADD CUSTOMER</button>
+<div style="display:flex;gap:8px;margin-bottom:12px"><button class="action-btn" style="margin-bottom:0" onclick="showAddLead('customer')">+ ADD CUSTOMER</button><button class="action-btn secondary" style="margin-bottom:0;flex:0 0 auto" onclick="exportLeads('customer')">Export</button></div>
 <div id="customerLeadsList" class="card-list"></div>
 </div>
 
@@ -187,7 +187,7 @@
 <button class="filter-chip" data-lf="active" data-for="dealership">Active</button>
 <button class="filter-chip" data-lf="renewal" data-for="dealership">Renewal</button>
 </div>
-<button class="action-btn" onclick="showAddLead('dealership')">+ ADD DEALERSHIP</button>
+<div style="display:flex;gap:8px;margin-bottom:12px"><button class="action-btn" style="margin-bottom:0" onclick="showAddLead('dealership')">+ ADD DEALERSHIP</button><button class="action-btn secondary" style="margin-bottom:0;flex:0 0 auto" onclick="exportLeads('dealership')">Export</button></div>
 <div id="dealershipLeadsList" class="card-list"></div>
 </div>
 

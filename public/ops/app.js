@@ -687,7 +687,33 @@ function renderAllLeads(){
   renderLeadList('storm','all');
   renderLeadList('customer','all');
   renderLeadList('dealership','all');
+  // Update count badges on tabs
+  var cs=document.getElementById('countStorm');if(cs)cs.textContent=stormLeads.length;
+  var cc=document.getElementById('countCustomer');if(cc)cc.textContent=customerLeads.length;
+  var cd=document.getElementById('countDealership');if(cd)cd.textContent=dealershipLeads.length;
 }
+
+// Export leads to CSV
+window.exportLeads=function(type){
+  var arr=type==='storm'?stormLeads:type==='customer'?customerLeads:dealershipLeads;
+  if(!arr.length){alert('No '+type+' leads to export');return}
+  var keys=Object.keys(arr.reduce(function(acc,l){Object.keys(l).forEach(function(k){acc[k]=1});return acc},{}));
+  var csv=keys.join(',')+'\n';
+  arr.forEach(function(l){
+    csv+=keys.map(function(k){
+      var v=(l[k]===null||l[k]===undefined)?'':String(l[k]);
+      v=v.replace(/"/g,'""');
+      return '"'+v+'"';
+    }).join(',')+'\n';
+  });
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;
+  a.download='hailstrike-'+type+'-leads-'+new Date().toISOString().split('T')[0]+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
 
 function renderLeadList(type,filter){
   filter=filter||'all';
@@ -703,6 +729,11 @@ function renderLeadList(type,filter){
     return;
   }
 
+  // Sort by creation date — newest first
+  filtered.sort(function(a,b){
+    return (b.createdAt||'').localeCompare(a.createdAt||'');
+  });
+
   el.innerHTML=filtered.map(function(l,i){
     var bc=getStatusBadge(l.status);
     var title=type==='dealership'?(l.dealerName||'Dealership #'+(i+1)):type==='storm'?(l.area||l.location||'Storm Zone #'+(i+1)):(l.name||'Customer #'+(i+1));
@@ -711,16 +742,34 @@ function renderLeadList(type,filter){
     if(type==='customer') meta=(l.phone?'<span>'+l.phone+'</span>':'')+(l.vehicle?'<span>'+l.vehicle+'</span>':'')+(l.damageType?'<span>'+l.damageType+'</span>':'')+(l.source?'<span>via '+l.source+'</span>':'');
     if(type==='dealership') meta=(l.dealerContact?'<span>'+l.dealerContact+'</span>':'')+(l.dealerPhone?'<span>'+l.dealerPhone+'</span>':'')+(l.dealerType?'<span>'+l.dealerType+'</span>':'')+(l.lotSize?'<span>~'+l.lotSize+' vehicles</span>':'');
 
+    // Age of lead
+    var age='';
+    if(l.createdAt){
+      var ms=Date.now()-new Date(l.createdAt).getTime();
+      var hrs=Math.floor(ms/(1000*60*60));
+      var days=Math.floor(hrs/24);
+      if(days>0) age=days+'d ago';
+      else if(hrs>0) age=hrs+'h ago';
+      else age=Math.max(1,Math.floor(ms/60000))+'m ago';
+    }
+
     var actions='';
     var phone=type==='dealership'?l.dealerPhone:l.phone;
+    var email=type==='dealership'?l.dealerEmail:l.email;
     if(phone) actions+='<a class="card-btn red" href="tel:'+phone+'">Call</a><a class="card-btn" href="sms:'+phone+'">Text</a>';
-    actions+='<button class="card-btn" onclick="nextStatus(\''+type+'\','+i+')">Next Status</button>';
-    actions+='<button class="card-btn" onclick="deleteLead(\''+type+'\','+i+')" style="color:var(--red)">Delete</button>';
+    if(email) actions+='<a class="card-btn" href="mailto:'+email+'">Email</a>';
+    // Directions if we have an address
+    var addr=type==='customer'?[l.address,l.city,l.state].filter(Boolean).join(', '):
+             type==='dealership'?[l.dealerAddress,l.dealerCity,l.dealerState].filter(Boolean).join(', '):
+             (l.area?l.area+', '+(l.state||''):'');
+    if(addr) actions+='<a class="card-btn" href="https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(addr)+'" target="_blank">Drive</a>';
+    actions+='<button class="card-btn" onclick="nextStatus(\''+type+'\','+i+')">Next \u2192</button>';
+    actions+='<button class="card-btn" onclick="deleteLead(\''+type+'\','+i+')" style="color:var(--red)">\u00d7</button>';
 
     return '<div class="data-card">'+
       '<div class="card-head"><span class="card-title">'+title+'</span><span class="card-badge '+bc+'">'+l.status+'</span></div>'+
-      '<div class="card-meta">'+meta+'</div>'+
-      (l.notes?'<div class="card-meta" style="margin-top:4px"><span style="color:#666">'+l.notes+'</span></div>':'')+
+      '<div class="card-meta">'+meta+(age?'<span style="color:#666">'+age+'</span>':'')+'</div>'+
+      (l.notes?'<div class="card-meta" style="margin-top:4px"><span style="color:#666;white-space:pre-wrap">'+l.notes+'</span></div>':'')+
       '<div class="card-actions">'+actions+'</div></div>';
   }).join('');
 }
