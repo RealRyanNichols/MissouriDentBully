@@ -50,7 +50,7 @@ module.exports = async function handler(req, res) {
 
     // SPC storm reports - today and yesterday
     const spcReports = [];
-    const dateOptions = ['today', 'yesterday'];
+    const dateOptions = ['today']; // Today only — no yesterday
     for (const day of dateOptions) {
       try {
         const spcUrl = `https://www.spc.noaa.gov/climo/reports/${day === 'today' ? 'today' : 'yesterday'}_filtered_hail.csv`;

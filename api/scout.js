@@ -30,8 +30,8 @@ module.exports = async function handler(req, res) {
       fetchedAt: new Date().toISOString()
     };
 
-    // ── 1. Latest SPC Storm Reports (hail) ──
-    for (const day of ['today', 'yesterday']) {
+    // ── 1. Latest SPC Storm Reports (hail) — TODAY only ──
+    for (const day of ['today']) {
       try {
         const csvData = await new Promise((resolve, reject) => {
           const url = `https://www.spc.noaa.gov/climo/reports/${day === 'today' ? 'today' : 'yesterday'}_filtered_hail.csv`;
