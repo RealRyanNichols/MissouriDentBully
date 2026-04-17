@@ -1064,11 +1064,15 @@ window.getDirections=function(destLat,destLon,destName){
 
 function filterReports(){
   var q=document.getElementById('searchInput').value.toLowerCase().trim();
+  var clearBtn=document.getElementById('searchClear');
+  if(clearBtn) clearBtn.style.display=q?'block':'none';
+
   if(!q){
     renderReports(allReports);
     renderMap(allReports);
     renderScout(scoutZones,null);
     renderAlerts(allAlerts);
+    renderAllLeads();
     return;
   }
   // Filter reports
@@ -1089,7 +1093,43 @@ function filterReports(){
     return((a.event||'')+' '+(a.areas||'')+' '+(a.description||'')).toLowerCase().indexOf(q)!==-1;
   });
   renderAlerts(filteredAlerts);
+
+  // Filter leads
+  var filterFn=function(arr){
+    return arr.filter(function(l){
+      var haystack=Object.values(l).filter(function(v){return typeof v==='string'}).join(' ').toLowerCase();
+      return haystack.indexOf(q)!==-1;
+    });
+  };
+  var storms=filterFn(stormLeads),custs=filterFn(customerLeads),deals=filterFn(dealershipLeads);
+  // Render filtered leads
+  renderLeadListFromArray('storm',storms);
+  renderLeadListFromArray('customer',custs);
+  renderLeadListFromArray('dealership',deals);
 }
+
+function renderLeadListFromArray(type,arr){
+  var el=document.getElementById(type+'LeadsList');
+  if(!el) return;
+  if(!arr.length){
+    el.innerHTML='<div class="data-card"><div class="card-title" style="color:var(--muted)">No matches in '+type+' leads</div></div>';
+    return;
+  }
+  // Temporarily swap array and render, then swap back — simplest approach
+  var backup;
+  if(type==='storm'){backup=stormLeads;stormLeads=arr}
+  else if(type==='customer'){backup=customerLeads;customerLeads=arr}
+  else{backup=dealershipLeads;dealershipLeads=arr}
+  renderLeadList(type,'all');
+  if(type==='storm')stormLeads=backup;
+  else if(type==='customer')customerLeads=backup;
+  else dealershipLeads=backup;
+}
+
+window.clearSearch=function(){
+  document.getElementById('searchInput').value='';
+  filterReports();
+};
 window.flyTo=function(lat,lon){
   document.querySelector('[data-tab="map"]').click();
   setTimeout(function(){map.flyTo([lat,lon],11,{duration:0.8})},150);

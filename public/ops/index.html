@@ -41,7 +41,7 @@
 
 <!-- SEARCH BAR -->
 <div class="search-bar">
-<input type="text" id="searchInput" placeholder="Search: Joplin, Clay County, Kansas City...">
+<div style="flex:1;position:relative"><input type="text" id="searchInput" placeholder="Search: city, county, leads..." style="width:100%"><button id="searchClear" onclick="clearSearch()" style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);background:var(--border);border:none;color:var(--white);width:22px;height:22px;border-radius:11px;cursor:pointer;font-size:14px;line-height:1">×</button></div>
 <select id="stateFilter">
 <option value="">All States</option>
 <option value="MO" selected>Missouri</option>
