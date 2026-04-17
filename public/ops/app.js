@@ -863,20 +863,61 @@ window.deleteLead=function(type,i){
 function loadTemplates(){
   fetch('/api/outreach').then(function(r){return r.json()}).then(function(data){
     var el=document.getElementById('templatesList');
-    var sms=data.templates.sms;
+    if(!el) return;
+    var sms=data.templates.sms||{};
     el.innerHTML=Object.keys(sms).map(function(k){
       var t=sms[k];
-      return '<div class="data-card"><div class="card-title">'+t.name+'</div><div class="card-meta" style="margin-top:6px"><span style="color:#999;line-height:1.5">'+t.message+'</span></div><div class="card-actions"><button class="card-btn" onclick="copyText(\''+t.message.replace(/'/g,"\\'")+'\')">Copy</button></div></div>';
+      var safe=t.message.replace(/'/g,"&apos;").replace(/\n/g,'\\n');
+      return '<div class="data-card"><div class="card-title">'+t.name+'</div>'+
+        '<div class="card-meta" style="margin-top:6px"><span style="color:#999;line-height:1.5;white-space:pre-wrap">'+t.message+'</span></div>'+
+        '<div class="card-actions">'+
+          '<button class="card-btn" onclick="copyText(this.dataset.text)" data-text="'+safe+'">Copy</button>'+
+          '<a class="card-btn" href="sms:?body='+encodeURIComponent(t.message)+'">Open in SMS</a>'+
+        '</div></div>';
     }).join('');
-    // Preview first template
-    document.getElementById('blastPreview').value=sms.pdr_hail_initial.message;
-    document.getElementById('blastTemplate').addEventListener('change',function(){
-      var sel=this.value;
-      if(sms[sel]) document.getElementById('blastPreview').value=sms[sel].message;
-    });
   }).catch(function(){});
 }
-window.sendBlast=function(){alert('SMS blast requires Twilio integration. Add TWILIO_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE to Vercel env vars.')};
+
+// Send a single email through Resend
+window.sendEmail=function(){
+  var to=document.getElementById('outToEmail').value.trim();
+  var tmpl=document.getElementById('outTemplate').value;
+  var name=document.getElementById('outName').value.trim();
+  var area=document.getElementById('outArea').value.trim();
+  var extra=document.getElementById('outExtra').value.trim();
+  var subject=document.getElementById('outSubject').value.trim();
+  var body=document.getElementById('outBody').value.trim();
+  var resEl=document.getElementById('outResult');
+
+  if(!to){resEl.innerHTML='<span style="color:#f44336">Enter a recipient email</span>';return}
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)){resEl.innerHTML='<span style="color:#f44336">Invalid email address</span>';return}
+
+  resEl.innerHTML='<span style="color:#666">Sending...</span>';
+  fetch('/api/outreach',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      type:'email',
+      template:tmpl,
+      to:to,
+      variables:{name:name,area:area,size:extra,carrier:extra},
+      customSubject:subject||undefined,
+      customMessage:body||undefined
+    })
+  }).then(function(r){return r.json()}).then(function(data){
+    if(data.success){
+      resEl.innerHTML='<span style="color:#00e676">\u2713 Sent successfully</span>';
+      // Clear form
+      document.getElementById('outToEmail').value='';
+      document.getElementById('outSubject').value='';
+      document.getElementById('outBody').value='';
+    } else {
+      resEl.innerHTML='<span style="color:#f44336">Failed: '+(data.error||'unknown error')+'</span>';
+    }
+  }).catch(function(e){
+    resEl.innerHTML='<span style="color:#f44336">Network error — try again</span>';
+  });
+};
 
 // ─── Facebook Integration ─────────────────────────────
 var fbConnected=false;

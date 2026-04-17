@@ -281,19 +281,30 @@
 
 <!-- OUTREACH TAB -->
 <div class="tab-panel" id="panel-outreach">
-<div class="section-head">Outreach Campaigns</div>
-<p class="section-sub">Pre-built SMS & email templates. Auto-filled with storm data.</p>
-<div id="templatesList" class="card-list">Loading templates...</div>
-<div class="section-head" style="margin-top:20px">Quick Blast</div>
-<p class="section-sub">Send to all leads in a storm zone.</p>
-<select id="blastTemplate" class="full-select">
+
+<!-- Send Single Email -->
+<div class="section-head">Send Email to a Customer</div>
+<p class="section-sub">Pick a template, fill in details, hit send. Email goes through Resend.</p>
+<div class="form-card">
+<select id="outTemplate" class="full-select">
 <option value="pdr_hail_initial">PDR Hail — First Contact</option>
 <option value="pdr_hail_followup">PDR Hail — Follow Up</option>
-<option value="pdr_insurance">PDR — Insurance Reminder</option>
+<option value="estimate_sent">Estimate Sent</option>
 </select>
-<textarea id="blastPreview" rows="4" class="full-textarea" readonly></textarea>
-<button class="action-btn" onclick="sendBlast()">SEND TO ALL LEADS IN ZONE</button>
-<p class="section-sub" style="margin-top:8px;color:var(--hs-amber)">SMS requires Twilio setup. Email requires SendGrid setup.</p>
+<input type="email" id="outToEmail" placeholder="Recipient email (e.g. customer@example.com)">
+<input type="text" id="outName" placeholder="Customer name">
+<input type="text" id="outArea" placeholder="Area / neighborhood">
+<input type="text" id="outExtra" placeholder="Extra variable (size / carrier)">
+<input type="text" id="outSubject" placeholder="Subject (leave blank to use template)">
+<textarea id="outBody" rows="6" placeholder="Body (leave blank to use template)"></textarea>
+<button class="action-btn" onclick="sendEmail()">Send Email</button>
+<div id="outResult" style="margin-top:8px;font-size:12px"></div>
+</div>
+
+<!-- SMS Templates (copy to clipboard) -->
+<div class="section-head" style="margin-top:20px">SMS Templates</div>
+<p class="section-sub">Tap Copy, then paste into your phone's messaging app.</p>
+<div id="templatesList" class="card-list">Loading templates...</div>
 </div>
 
 </div><!-- end tab-content -->
